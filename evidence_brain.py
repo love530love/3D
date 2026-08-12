@@ -23,6 +23,7 @@ def main() -> int:
     models = read(args.reports / "models-latest.json")
     probabilities = read(args.reports / "probability-latest.json")
     comparison = read(args.reports / "model-comparison-latest.json")
+    drift = read(args.reports / "drift-latest.json")
     outcomes = read(args.reports / "outcomes-latest.json")
     quality_pass = quality.get("status") == "PASS"
     probability_models = probabilities.get("models", {})
@@ -54,6 +55,7 @@ def main() -> int:
         "probability_summary": probabilities,
         "challenger_comparison": challenger_advantage,
         "outcome_archive": outcomes,
+        "drift_summary": drift,
         "evolution_policy": {
             "auto_modify_code": False,
             "auto_delete_data": False,
