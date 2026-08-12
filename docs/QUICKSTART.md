@@ -10,6 +10,7 @@
 .\.venv\Scripts\python.exe predict_sd3d.py
 .\.venv\Scripts\python.exe diagnose_sd3d.py
 .\.venv\Scripts\python.exe evaluate_models.py
+.\.venv\Scripts\python.exe probability_metrics.py
 ```
 
 分析器只读打开 `sd3d_history.sqlite3`，在 `reports/` 中生成带运行 ID 的 JSON 报告和 manifest。报告包含：
@@ -38,3 +39,5 @@
 `diagnose_sd3d.py` 生成均匀性、游程、滞后相关和置换检验报告。它是随机性诊断，不是预测器；多个检验必须整体解释，不能挑选单个有利 p 值。
 
 `evaluate_models.py` 使用统一时间协议评估模型注册表中的基线和 challenger。新模型必须实现相同的 `predict(train, top_k)` 接口，并与均匀基线同表比较。
+
+`probability_metrics.py` 评估完整位置概率分布，输出 Brier Score、Log Loss、Top-1 和简化校准误差。概率指标比单纯命中率更能发现过度自信和不可复现的模型。
