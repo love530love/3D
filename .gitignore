@@ -18,6 +18,8 @@ sd3d_history.csv
 sd3d_*.csv
 reports/*
 !reports/.gitkeep
+predictions/*
+!predictions/.gitkeep
 
 # Local scratch/output files from earlier experiments
 outball.csv
