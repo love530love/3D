@@ -26,6 +26,7 @@ def main() -> int:
         ["drift_sd3d.py", *common],
         ["compare_models_stats.py", *common, "--repeats", str(args.bootstrap_repeats)],
         ["build_teaching_report.py"],
+        ["analyze_outcomes.py", *common],
         ["evidence_brain.py"],
         ["generate_evolution_proposal.py"],
     ]

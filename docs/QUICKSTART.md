@@ -17,6 +17,7 @@
 .\.venv\Scripts\python.exe evidence_brain.py
 .\.venv\Scripts\python.exe drift_sd3d.py
 .\.venv\Scripts\python.exe generate_evolution_proposal.py
+.\.venv\Scripts\python.exe analyze_outcomes.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe run_update_cycle.py
 .\.venv\Scripts\python.exe record_outcomes.py
@@ -60,6 +61,8 @@
 `drift_sd3d.py` 比较近期窗口与历史窗口的数字、和值和形态分布，只输出 `REVIEW_ONLY` 复核信号，不自动追逐漂移。
 
 `generate_evolution_proposal.py` 根据当前证据生成 `DRAFT` 进化提案。提案必须经过专家审计和投票，系统不会自动实施。
+
+`analyze_outcomes.py` 汇总已完成盲评的模型表现；没有完成开奖对比时会明确输出样本不足，不会制造统计结论。
 
 原始快照可以离线重放：
 
