@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from fetch_sd3d import extract_draw_rows, extract_rows
+from brain_contract import REQUIRED
 from models_sd3d import REGISTRY
 
 
@@ -16,6 +17,11 @@ class CoreContractTests(unittest.TestCase):
     def test_model_registry_has_uniform_baseline(self):
         self.assertEqual(REGISTRY[0].name, "uniform_baseline")
         self.assertEqual(len(REGISTRY[0].predict([], 10)), 10)
+
+    def test_brain_contract_requires_safety_fields(self):
+        self.assertIn("quality_gate", REQUIRED)
+        self.assertIn("evolution_policy", REQUIRED)
+        self.assertIn("disclaimer", REQUIRED)
 
     def test_persisted_payload_is_json(self):
         with tempfile.TemporaryDirectory() as directory:
