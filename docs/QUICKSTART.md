@@ -8,6 +8,7 @@
 .\.venv\Scripts\python.exe backtest_sd3d.py
 .\.venv\Scripts\python.exe validate_sd3d.py
 .\.venv\Scripts\python.exe predict_sd3d.py
+.\.venv\Scripts\python.exe diagnose_sd3d.py
 ```
 
 分析器只读打开 `sd3d_history.sqlite3`，在 `reports/` 中生成带运行 ID 的 JSON 报告和 manifest。报告包含：
@@ -32,3 +33,5 @@
 ```
 
 若目标期号尚未入库，对比程序返回 `Pending`，不会读取或猜测实际结果。
+
+`diagnose_sd3d.py` 生成均匀性、游程、滞后相关和置换检验报告。它是随机性诊断，不是预测器；多个检验必须整体解释，不能挑选单个有利 p 值。
