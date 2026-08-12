@@ -28,6 +28,7 @@ def main() -> int:
         ["build_teaching_report.py"],
         ["analyze_outcomes.py", *common],
         ["evidence_brain.py"],
+        ["brain_contract.py"],
         ["generate_evolution_proposal.py"],
     ]
     for step in steps:
