@@ -36,6 +36,7 @@ DEFAULT_DB = Path(__file__).with_name("sd3d_history.sqlite3")
 DEFAULT_LOG = Path(__file__).with_name("sd3d_history.jsonl")
 LEGACY_LOG = Path(__file__).with_name("sd3d_history.tx")
 DEFAULT_STATE = Path(__file__).with_name("sd3d_fetch_state.json")
+DEFAULT_RAW_DIR = Path(__file__).with_name("raw_snapshots")
 MIN_REQUEST_INTERVAL = float(os.environ.get("SD3D_MIN_INTERVAL", "3.0"))
 
 
@@ -241,6 +242,7 @@ def main() -> int:
     parser.add_argument("--start", help="起始期号，例如 2026001")
     parser.add_argument("--end", help="结束期号，例如 2026999")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    parser.add_argument("--raw-dir", type=Path, default=DEFAULT_RAW_DIR)
     parser.add_argument("--log", "--tx", dest="log", type=Path, default=DEFAULT_LOG,
                         help="追加式 JSONL 审计日志；--tx 仅为旧参数兼容别名")
     args = parser.parse_args()
@@ -264,10 +266,14 @@ def main() -> int:
         html = fetch_html(url)
         page_rows = extract_rows(html)
         draw_rows = extract_draw_rows(page_rows)
+        source_hash = hashlib.sha256(html.encode("utf-8")).hexdigest()
+        args.raw_dir.mkdir(parents=True, exist_ok=True)
+        raw_path = args.raw_dir / f"{source_hash}.html"
+        if not raw_path.exists():
+            raw_path.write_text(html, encoding="utf-8")
         if not draw_rows:
             print("No new draw rows; existing SQLite and transaction log were preserved.")
             return 0
-        source_hash = hashlib.sha256(html.encode("utf-8")).hexdigest()
         fetched, inserted = persist_draws(draw_rows, url, source_hash, args.db, args.log, uuid.uuid4().hex)
         connection = open_store(args.db)
         stored = connection.execute("SELECT values_json FROM draws ORDER BY period DESC").fetchall()
@@ -281,6 +287,7 @@ def main() -> int:
     print(f"CSV export: {args.output.resolve()}")
     print(f"SQLite store: {args.db.resolve()}")
     print(f"Audit log: {args.log.resolve()}")
+    print(f"Raw snapshot: {raw_path.resolve()}")
     return 0
 
 

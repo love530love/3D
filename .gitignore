@@ -12,6 +12,7 @@ sd3d_history.sqlite3-shm
 sd3d_history.jsonl
 sd3d_history.tx
 sd3d_fetch_state.json
+raw_snapshots/
 
 # Regenerable exports and reports
 sd3d_history.csv
