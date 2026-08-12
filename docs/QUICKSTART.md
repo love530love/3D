@@ -13,6 +13,7 @@
 .\.venv\Scripts\python.exe probability_metrics.py
 .\.venv\Scripts\python.exe compare_models_stats.py
 .\.venv\Scripts\python.exe build_teaching_report.py
+.\.venv\Scripts\python.exe run_pipeline.py
 ```
 
 分析器只读打开 `sd3d_history.sqlite3`，在 `reports/` 中生成带运行 ID 的 JSON 报告和 manifest。报告包含：
@@ -45,3 +46,5 @@
 `probability_metrics.py` 评估完整位置概率分布，输出 Brier Score、Log Loss、Top-1 和简化校准误差。概率指标比单纯命中率更能发现过度自信和不可复现的模型。
 
 `compare_models_stats.py` 用配对 Bootstrap 估计 challenger 相对均匀基线的差异区间；`build_teaching_report.py` 汇总当前质量、随机性、模型和概率报告。
+
+推荐日常使用 `run_pipeline.py`。它先执行质量门禁，只有门禁通过才继续生成分析、回测、概率、Bootstrap 和教学报告。
