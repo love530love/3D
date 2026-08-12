@@ -45,6 +45,7 @@
 - `run_update_cycle.py`：日常更新、旧预测盲评和新预测冻结。
 - `replay_snapshot.py`：离线重放原始响应。
 - `evidence_brain.py`：汇总所有证据并生成受治理约束的综合判断。
+- `model_gate.py`：决定 challenger 是否只能保持基线或进入专家复核。
 
 ## 数据与 Git 边界
 

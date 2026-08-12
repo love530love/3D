@@ -22,6 +22,8 @@ def main() -> int:
     models = read(args.reports / "models-latest.json")
     probabilities = read(args.reports / "probability-latest.json")
     comparison = read(args.reports / "model-comparison-latest.json")
+    gate = read(args.reports / "model-gate-latest.json")
+    brain = read(args.reports / "brain-decision-latest.json")
     lines = ["# 福彩3D统计学习实验报告", "", f"生成时间：{datetime.now(timezone.utc).isoformat(timespec='seconds')}", "",
              "> 本报告用于学习数据工程、统计推断和模型评估，不构成投注建议，也不证明彩票可预测。", ""]
     db = quality.get("database", {})
@@ -33,6 +35,7 @@ def main() -> int:
     lines += ["", "## Challenger 差异", "", "Bootstrap 区间跨过 0 时，不应声称存在稳定优势。", ""]
     for name, item in comparison.get("comparisons_vs_uniform", {}).items():
         lines.append(f"- {name}: 差异 {item.get('observed_rate_difference', 'N/A')}，95% CI {item.get('bootstrap_95ci', 'N/A')}")
+    lines += ["", "## 中枢判断", "", f"- 综合 verdict：`{brain.get('verdict', 'N/A')}`", f"- 模型门禁：`{gate.get('status', 'N/A')}`", f"- 实验性模型：`{brain.get('selected_for_experiment_only', 'N/A')}`", "", "模型门禁不等于模型晋升；任何升级仍需专家审计和投票。"]
     lines += ["", "## 方法限制", "", "短期频率、显著性和命中都可能来自随机波动；后续运行必须继续使用时间冻结、随机基线和盲评。", ""]
     output = args.reports / "teaching-latest.md"
     output.write_text("\n".join(lines), encoding="utf-8")
