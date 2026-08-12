@@ -19,6 +19,7 @@
 .\.venv\Scripts\python.exe drift_sd3d.py
 .\.venv\Scripts\python.exe generate_evolution_proposal.py
 .\.venv\Scripts\python.exe analyze_outcomes.py
+.\.venv\Scripts\python.exe model_gate.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe run_update_cycle.py
 .\.venv\Scripts\python.exe record_outcomes.py
@@ -66,6 +67,8 @@
 `generate_evolution_proposal.py` 根据当前证据生成 `DRAFT` 进化提案。提案必须经过专家审计和投票，系统不会自动实施。
 
 `analyze_outcomes.py` 汇总已完成盲评的模型表现；没有完成开奖对比时会明确输出样本不足，不会制造统计结论。
+
+`model_gate.py` 是保守模型门禁：没有稳定 Bootstrap 优势时保持 `BASELINE_REQUIRED`，即使通过也只进入专家复核，不会自动晋升。
 
 原始快照可以离线重放：
 

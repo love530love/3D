@@ -25,6 +25,7 @@ def main() -> int:
         ["probability_metrics.py", *common],
         ["drift_sd3d.py", *common],
         ["compare_models_stats.py", *common, "--repeats", str(args.bootstrap_repeats)],
+        ["model_gate.py"],
         ["build_teaching_report.py"],
         ["analyze_outcomes.py", *common],
         ["evidence_brain.py"],

@@ -26,6 +26,7 @@ def main() -> int:
     drift = read(args.reports / "drift-latest.json")
     outcomes = read(args.reports / "outcomes-latest.json")
     outcome_analysis = read(args.reports / "outcomes-analysis-latest.json")
+    model_gate = read(args.reports / "model-gate-latest.json")
     quality_pass = quality.get("status") == "PASS"
     probability_models = probabilities.get("models", {})
     ranked = sorted(probability_models.items(), key=lambda item: item[1].get("log_loss", float("inf")))
@@ -57,6 +58,7 @@ def main() -> int:
         "challenger_comparison": challenger_advantage,
         "outcome_archive": outcomes,
         "outcome_analysis": outcome_analysis,
+        "model_gate": model_gate,
         "drift_summary": drift,
         "evolution_policy": {
             "auto_modify_code": False,
