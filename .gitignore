@@ -1,0 +1,26 @@
+# Python / IDE
+__pycache__/
+*.py[cod]
+.venv/
+.idea/
+.pytest_cache/
+
+# Local runtime state and append-only data archives
+sd3d_history.sqlite3
+sd3d_history.sqlite3-wal
+sd3d_history.sqlite3-shm
+sd3d_history.jsonl
+sd3d_history.tx
+sd3d_fetch_state.json
+
+# Regenerable exports and reports
+sd3d_history.csv
+sd3d_*.csv
+reports/*
+!reports/.gitkeep
+
+# Local scratch/output files from earlier experiments
+outball.csv
+prob_result.csv
+count_result.csv
+data.csv
