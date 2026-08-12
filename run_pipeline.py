@@ -27,6 +27,7 @@ def main() -> int:
         ["compare_models_stats.py", *common, "--repeats", str(args.bootstrap_repeats)],
         ["model_gate.py"],
         ["analyze_outcomes.py", *common],
+        ["scan_leakage.py", *common],
         ["evidence_brain.py"],
         ["brain_contract.py"],
         ["generate_evolution_proposal.py"],
