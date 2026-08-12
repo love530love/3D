@@ -21,6 +21,7 @@ reports/*
 !reports/.gitkeep
 predictions/*
 !predictions/.gitkeep
+docs/decisions/EVOLUTION-DRAFT.md
 
 # Local scratch/output files from earlier experiments
 outball.csv

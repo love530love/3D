@@ -16,6 +16,7 @@
 .\.venv\Scripts\python.exe run_pipeline.py
 .\.venv\Scripts\python.exe evidence_brain.py
 .\.venv\Scripts\python.exe drift_sd3d.py
+.\.venv\Scripts\python.exe generate_evolution_proposal.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe run_update_cycle.py
 .\.venv\Scripts\python.exe record_outcomes.py
@@ -57,6 +58,8 @@
 `evidence_brain.py` 汇总所有报告并输出综合判断。它是受治理约束的证据中枢，不会自动改代码、删数据或把实验模型升级为正式模型。
 
 `drift_sd3d.py` 比较近期窗口与历史窗口的数字、和值和形态分布，只输出 `REVIEW_ONLY` 复核信号，不自动追逐漂移。
+
+`generate_evolution_proposal.py` 根据当前证据生成 `DRAFT` 进化提案。提案必须经过专家审计和投票，系统不会自动实施。
 
 原始快照可以离线重放：
 

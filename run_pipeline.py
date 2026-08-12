@@ -27,6 +27,7 @@ def main() -> int:
         ["compare_models_stats.py", *common, "--repeats", str(args.bootstrap_repeats)],
         ["build_teaching_report.py"],
         ["evidence_brain.py"],
+        ["generate_evolution_proposal.py"],
     ]
     for step in steps:
         print(f"[pipeline] {' '.join(step)}")
