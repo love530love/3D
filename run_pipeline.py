@@ -13,11 +13,12 @@ def main() -> int:
     base = Path(__file__).parent
     p.add_argument("--db", type=Path, default=base / "sd3d_history.sqlite3")
     p.add_argument("--log", type=Path, default=base / "sd3d_history.jsonl")
+    p.add_argument("--raw-dir", type=Path, default=base / "raw_snapshots")
     p.add_argument("--bootstrap-repeats", type=int, default=300)
     args = p.parse_args()
     common = ["--db", str(args.db)]
     steps = [
-        ["validate_sd3d.py", "--db", str(args.db), "--log", str(args.log)],
+        ["validate_sd3d.py", "--db", str(args.db), "--log", str(args.log), "--raw-dir", str(args.raw_dir)],
         ["analyze_sd3d.py", *common],
         ["diagnose_sd3d.py", *common],
         ["evaluate_models.py", *common],

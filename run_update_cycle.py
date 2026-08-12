@@ -18,6 +18,7 @@ def main() -> int:
     base = Path(__file__).parent
     p.add_argument("--db", type=Path, default=base / "sd3d_history.sqlite3")
     p.add_argument("--log", type=Path, default=base / "sd3d_history.jsonl")
+    p.add_argument("--raw-dir", type=Path, default=base / "raw_snapshots")
     p.add_argument("--no-fetch", action="store_true", help="仅用于离线演练，不访问网络")
     p.add_argument("--skip-pipeline", action="store_true")
     args = p.parse_args()
@@ -30,11 +31,11 @@ def main() -> int:
         result = run(base, ["fetch_sd3d.py", "--db", str(args.db), "--log", str(args.log)])
         if result != 0:
             return result
-    result = run(base, ["validate_sd3d.py", "--db", str(args.db), "--log", str(args.log)])
+    result = run(base, ["validate_sd3d.py", "--db", str(args.db), "--log", str(args.log), "--raw-dir", str(args.raw_dir)])
     if result != 0:
         return result
     if not args.skip_pipeline:
-        result = run(base, ["run_pipeline.py", "--db", str(args.db), "--log", str(args.log), "--bootstrap-repeats", "100"])
+        result = run(base, ["run_pipeline.py", "--db", str(args.db), "--log", str(args.log), "--raw-dir", str(args.raw_dir), "--bootstrap-repeats", "100"])
         if result != 0:
             return result
     # Do not create duplicate freezes while an earlier target is still pending.
