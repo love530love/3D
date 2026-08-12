@@ -38,6 +38,9 @@ def main() -> int:
         result = run(base, ["run_pipeline.py", "--db", str(args.db), "--log", str(args.log), "--raw-dir", str(args.raw_dir), "--bootstrap-repeats", "100"])
         if result != 0:
             return result
+    result = run(base, ["record_outcomes.py", "--db", str(args.db)])
+    if result != 0:
+        return result
     # Do not create duplicate freezes while an earlier target is still pending.
     pending = False
     for prediction in predictions:

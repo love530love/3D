@@ -16,6 +16,7 @@
 .\.venv\Scripts\python.exe run_pipeline.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe run_update_cycle.py
+.\.venv\Scripts\python.exe record_outcomes.py
 ```
 
 分析器只读打开 `sd3d_history.sqlite3`，在 `reports/` 中生成带运行 ID 的 JSON 报告和 manifest。报告包含：
@@ -64,3 +65,5 @@
 ```
 
 日常更新推荐使用 `run_update_cycle.py`：它先处理已有冻结预测，再增量抓取，执行质量门禁和分析流水线，最后在没有待盲评目标时冻结新预测。离线演练使用 `--no-fetch --skip-pipeline`。
+
+`record_outcomes.py` 将冻结预测和实际开奖写入 SQLite 的 `prediction_outcomes` 表，按 `prediction_id` 去重，支持长期偏差、漂移和模型版本分析。
