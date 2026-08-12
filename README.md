@@ -61,6 +61,7 @@ Git 私人仓库保存代码、文档、测试、治理规则和配置。SQLite�
 
 预测建模专项还必须阅读 `docs/PREDICTION_MODELING_GOVERNANCE.md`。
 新增模型使用 `docs/MODEL_PROPOSAL_TEMPLATE.md` 发起评审。
+中枢模型选型见 `docs/CENTRAL_BRAIN_MODEL_SELECTION.md`；语言模型默认只作为只读解释层。
 
 涉及数据契约、存储、模型评估定义或宪章的变更，必须经过规定的 subagent 专家审计和投票。
 

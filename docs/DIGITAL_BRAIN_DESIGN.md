@@ -42,3 +42,5 @@
 `evidence_brain.py` 是第一版综合汇总器。它读取已有报告和盲评归档，生成 `brain-decision-latest.json`。它可以选择“实验性当前模型”，但不会自动把模型升级为正式模型，也不会自动修改代码。
 
 `generate_evolution_proposal.py` 是进化层入口。它只生成 `DRAFT` 提案，任何模型升级仍需进入 `docs/decisions/` 完成专家审计、投票和回滚登记。
+
+中枢是否引入轻量语言模型，遵循 `docs/CENTRAL_BRAIN_MODEL_SELECTION.md`：数值决策保留确定性证据链，语言模型只做隔离的解释和教学层。
