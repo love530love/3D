@@ -14,6 +14,7 @@
 .\.venv\Scripts\python.exe compare_models_stats.py
 .\.venv\Scripts\python.exe build_teaching_report.py
 .\.venv\Scripts\python.exe run_pipeline.py
+.\.venv\Scripts\python.exe evidence_brain.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe run_update_cycle.py
 .\.venv\Scripts\python.exe record_outcomes.py
@@ -51,6 +52,8 @@
 `compare_models_stats.py` 用配对 Bootstrap 估计 challenger 相对均匀基线的差异区间；`build_teaching_report.py` 汇总当前质量、随机性、模型和概率报告。
 
 推荐日常使用 `run_pipeline.py`。它先执行质量门禁，只有门禁通过才继续生成分析、回测、概率、Bootstrap 和教学报告。
+
+`evidence_brain.py` 汇总所有报告并输出综合判断。它是受治理约束的证据中枢，不会自动改代码、删数据或把实验模型升级为正式模型。
 
 原始快照可以离线重放：
 

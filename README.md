@@ -34,6 +34,7 @@
   -> Bootstrap 区间比较
   -> 冻结预测与实际结果盲评
   -> 教学报告
+  -> 综合证据大脑
 ```
 
 主要入口：
@@ -43,6 +44,7 @@
 - `run_pipeline.py`：只读分析流水线。
 - `run_update_cycle.py`：日常更新、旧预测盲评和新预测冻结。
 - `replay_snapshot.py`：离线重放原始响应。
+- `evidence_brain.py`：汇总所有证据并生成受治理约束的综合判断。
 
 ## 数据与 Git 边界
 
