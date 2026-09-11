@@ -22,7 +22,10 @@ def main() -> int:
     p.add_argument("--no-fetch", action="store_true", help="仅用于离线演练，不访问网络")
     p.add_argument("--skip-pipeline", action="store_true")
     args = p.parse_args()
-    predictions = sorted((base / "predictions").glob("frozen-*.json"))
+    predictions = sorted(
+        p for p in (base / "predictions").glob("frozen-*.json")
+        if "-comparison" not in p.name
+    )
     if not args.no_fetch:
         for prediction in predictions:
             result = run(base, ["compare_prediction.py", str(prediction), "--db", str(args.db)])

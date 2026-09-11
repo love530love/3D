@@ -22,6 +22,7 @@ def main() -> int:
         ["analyze_sd3d.py", *common],
         ["diagnose_sd3d.py", *common],
         ["evaluate_models.py", *common],
+        ["model_screening.py", *common],
         ["probability_metrics.py", *common],
         ["drift_sd3d.py", *common],
         ["compare_models_stats.py", *common, "--repeats", str(args.bootstrap_repeats)],

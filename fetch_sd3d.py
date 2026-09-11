@@ -266,11 +266,12 @@ def main() -> int:
         html = fetch_html(url)
         page_rows = extract_rows(html)
         draw_rows = extract_draw_rows(page_rows)
-        source_hash = hashlib.sha256(html.encode("utf-8")).hexdigest()
+        raw_bytes = html.encode("utf-8")
+        source_hash = hashlib.sha256(raw_bytes).hexdigest()
         args.raw_dir.mkdir(parents=True, exist_ok=True)
         raw_path = args.raw_dir / f"{source_hash}.html"
         if not raw_path.exists():
-            raw_path.write_text(html, encoding="utf-8")
+            raw_path.write_bytes(raw_bytes)
         if not draw_rows:
             print("No new draw rows; existing SQLite and transaction log were preserved.")
             return 0

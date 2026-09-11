@@ -27,7 +27,10 @@ def main() -> int:
                 status TEXT NOT NULL, recorded_at TEXT NOT NULL
             )
         """)
-        predictions = sorted(args.predictions.glob("frozen-*.json"))
+        predictions = sorted(
+            p for p in args.predictions.glob("frozen-*.json")
+            if "-comparison" not in p.name
+        )
         pending = completed = 0
         for path in predictions:
             artifact = json.loads(path.read_text(encoding="utf-8"))

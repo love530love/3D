@@ -21,7 +21,10 @@ def main() -> int:
     scanned = 0
     with sqlite3.connect(args.db) as connection:
         periods = {str(row[0]) for row in connection.execute("SELECT period FROM draws")}
-    for path in sorted(args.predictions.glob("frozen-*.json")):
+    for path in sorted(
+        p for p in args.predictions.glob("frozen-*.json")
+        if "-comparison" not in p.name
+    ):
         scanned += 1
         try:
             artifact = json.loads(path.read_text(encoding="utf-8"))
