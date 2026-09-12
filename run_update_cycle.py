@@ -37,13 +37,16 @@ def main() -> int:
     result = run(base, ["validate_sd3d.py", "--db", str(args.db), "--log", str(args.log), "--raw-dir", str(args.raw_dir)])
     if result != 0:
         return result
+    # Record outcomes before the analysis pipeline so analyze_outcomes /
+    # evidence_brain (run inside run_pipeline) see this cycle's fresh blind-eval
+    # results instead of lagging one cycle behind.
+    result = run(base, ["record_outcomes.py", "--db", str(args.db)])
+    if result != 0:
+        return result
     if not args.skip_pipeline:
         result = run(base, ["run_pipeline.py", "--db", str(args.db), "--log", str(args.log), "--raw-dir", str(args.raw_dir), "--bootstrap-repeats", "100"])
         if result != 0:
             return result
-    result = run(base, ["record_outcomes.py", "--db", str(args.db)])
-    if result != 0:
-        return result
     # Do not create duplicate freezes while an earlier target is still pending.
     pending = False
     for prediction in predictions:
