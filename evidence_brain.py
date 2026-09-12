@@ -35,7 +35,9 @@ def main() -> int:
     for name, result in comparison.get("comparisons_vs_uniform", {}).items():
         interval = result.get("bootstrap_95ci", [0, 0])
         challenger_advantage[name] = {"difference": result.get("observed_rate_difference"), "ci": interval,
-                                      "stable_positive": interval[0] > 0}
+                                      "stable_positive": interval[0] > 0,
+                                      "raw_p": result.get("raw_p"),
+                                      "corrected_p": result.get("corrected_p")}
     if not quality_pass:
         verdict = "FROZEN_DATA_QUALITY_FAILURE"
         recommendation = "停止模型结论和预测发布，先修复质量门禁。"

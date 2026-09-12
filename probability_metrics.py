@@ -6,8 +6,9 @@ import argparse
 import json
 import math
 import sqlite3
-from collections import Counter
 from pathlib import Path
+
+from models_sd3d import REGISTRY
 
 
 def load(db: Path) -> list[str]:
@@ -22,13 +23,7 @@ def load(db: Path) -> list[str]:
     return result
 
 
-def smoothed_distribution(train: list[str], position: int, alpha: float) -> list[float]:
-    counts = Counter(number[position] for number in train)
-    denominator = len(train) + 10 * alpha
-    return [(counts[str(digit)] + alpha) / denominator for digit in range(10)]
-
-
-def score(model: str, draws: list[str], min_train: int, alpha: float) -> dict:
+def score_with_distribution(distribution, draws: list[str], min_train: int, alpha: float) -> dict:
     brier = 0.0
     log_loss = 0.0
     calibration = [0.0] * 10
@@ -37,10 +32,7 @@ def score(model: str, draws: list[str], min_train: int, alpha: float) -> dict:
     for index in range(min_train, len(draws)):
         train = draws[:index]
         for position in range(3):
-            if model == "uniform":
-                probabilities = [0.1] * 10
-            else:
-                probabilities = smoothed_distribution(train, position, alpha)
+            probabilities = distribution(train, position, alpha)
             actual = int(draws[index][position])
             for digit, probability in enumerate(probabilities):
                 target = float(digit == actual)
@@ -57,6 +49,37 @@ def score(model: str, draws: list[str], min_train: int, alpha: float) -> dict:
             "alpha": alpha}
 
 
+def empirical_p_value(bootstrap_means: list[float], observed: float) -> float:
+    """One-tailed bootstrap p-value for H0: mean advantage <= 0.
+
+    p = (1 + #{b: b >= observed}) / (B + 1). A small p indicates the observed
+    advantage is unlikely under the bootstrap distribution of differences.
+    """
+    n = len(bootstrap_means)
+    if n == 0:
+        return float("nan")
+    count = sum(1 for b in bootstrap_means if b >= observed)
+    return (1 + count) / (n + 1)
+
+
+def benjamini_hochberg(pvals: list[float]) -> list[float]:
+    """Benjamini-Hochberg FDR correction.
+
+    Returns adjusted p-values, monotone non-decreasing, capped at 1.0.
+    """
+    m = len(pvals)
+    if m == 0:
+        return []
+    order = sorted(range(m), key=lambda i: pvals[i])
+    adjusted = [0.0] * m
+    prev = 0.0
+    for rank, idx in enumerate(order, start=1):
+        val = min(1.0, m * pvals[idx] / rank)
+        prev = max(prev, val)
+        adjusted[idx] = prev
+    return adjusted
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="福彩3D概率评分与校准")
     base = Path(__file__).parent
@@ -66,20 +89,26 @@ def main() -> int:
     p.add_argument("--out", type=Path, default=base / "reports" / "probability-latest.json")
     args = p.parse_args()
     draws = load(args.db)
+    models = {}
+    for spec in REGISTRY:
+        if spec.distribution is None:
+            continue
+        models[spec.name] = score_with_distribution(spec.distribution, draws, args.min_train, args.alpha)
+    # Backward-compatible aliases for any legacy consumer.
+    models.setdefault("uniform", models.get("uniform_baseline", {}))
+    models.setdefault("smoothed_position_frequency", models.get("position_frequency", {}))
     report = {
         "disclaimer": "概率评分是历史外推评估，不证明未来存在可利用优势。",
         "protocol": {"min_train": args.min_train, "tested_draws": len(draws) - args.min_train},
-        "models": {
-            "uniform": score("uniform", draws, args.min_train, args.alpha),
-            "smoothed_position_frequency": score("frequency", draws, args.min_train, args.alpha),
-        },
+        "models": models,
         "interpretation": "Brier 和 Log Loss 越低越好；必须在同一时间窗口与均匀基线比较。",
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Probability evaluation complete: {len(draws)} draws")
+    print(f"Probability evaluation complete: {len(models)} models")
     print(f"Report: {args.out.resolve()}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

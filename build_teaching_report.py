@@ -34,11 +34,26 @@ def main() -> int:
         lines.append(f"| {name} | {score.get('brier_score', 'N/A')} | {score.get('log_loss', 'N/A')} | {score.get('top1_rate', 'N/A')} |")
     lines += ["", "## Challenger 差异", "", "Bootstrap 区间跨过 0 时，不应声称存在稳定优势。", ""]
     for name, item in comparison.get("comparisons_vs_uniform", {}).items():
-        lines.append(f"- {name}: 差异 {item.get('observed_rate_difference', 'N/A')}，95% CI {item.get('bootstrap_95ci', 'N/A')}")
+        lines.append(
+            f"- {name}: 差异 {item.get('observed_rate_difference', 'N/A')}，"
+            f"95% CI {item.get('bootstrap_95ci', 'N/A')}，"
+            f"校正后 p={item.get('corrected_p', 'N/A')}"
+        )
     lines += ["", "## 中枢判断", "", f"- 综合 verdict：`{brain.get('verdict', 'N/A')}`", f"- 模型门禁：`{gate.get('status', 'N/A')}`", f"- 实验性模型：`{brain.get('selected_for_experiment_only', 'N/A')}`", "", "模型门禁不等于模型晋升；任何升级仍需专家审计和投票。"]
-    lines += ["", "## 方法限制", "", "短期频率、显著性和命中都可能来自随机波动；后续运行必须继续使用时间冻结、随机基线和盲评。", ""]
+    lines += ["", "## 方法限制", "", "短期频率、显著性和命中都可能来自随机波动；后续运行必须继续使用时间冻结、随机基线和盲评。", "",
+              "## 结论的认识论边界", "",
+              "本实验结论是**负向的**：在覆盖多家族方法（频率 / Laplace 平滑 / 近期窗口 / 一阶马尔可夫）、严格时间冻结、Bootstrap 与 Benjamini–Hochberg 多重比较校正下，一致**未观测到**稳定优于随机基线的优势。",
+              "这构成“反对可预测性的强证据”，而**不是**“彩票在原理上不可预测”的正向证明——后者在逻辑上无法由任何有限经验证据达成。",
+              "残余不确定性：未覆盖深度学习 / 树模型 / 外生特征；逐位预测未对和值、形态等池化目标独立验证；马尔可夫仅一阶；样本约数千期，极低频结构可能低于检测灵敏度。", ""]
+    text = "\n".join(lines)
+    # Guard against any "proven unpredictable" positive-proof phrasing leaking in.
+    forbidden = ["证明不可预测", "已证明无法预测", "证明彩票不可预测"]
+    for phrase in forbidden:
+        if phrase in text:
+            print(f"[teaching-report] FORBIDDEN phrase detected: {phrase}", file=sys.stderr)
+            return 1
     output = args.reports / "teaching-latest.md"
-    output.write_text("\n".join(lines), encoding="utf-8")
+    output.write_text(text, encoding="utf-8")
     print(f"Teaching report: {output.resolve()}")
 
 

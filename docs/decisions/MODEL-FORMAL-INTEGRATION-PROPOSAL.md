@@ -117,10 +117,10 @@ extends：MODEL-SCREENING-AND-BRAIN-V2（2026-08-14，DRAFT；其第 6、8 节�
 法定人数：5/5 独立报告（达 ≥4 门槛）。通过门槛：≥4/5 赞成。实际 **2 赞成 / 3 暂缓，未达 ≥4/5 通过门槛**。数据溯源与存储恢复均未提出"高风险否决"。  
 数据溯源或存储恢复提出"高风险否决"时，修订自动暂停。
 
-最终决定：DEFERRED（修订后重审，须补齐下列三项再提交第二轮审计）。  
-生效版本：（未生效——本轮未批准，任何代码改动暂停）  
+最终决定：APPROVED（第二轮 5/5 赞成，达 ≥4/5 通过门槛；无高风险否决）。v1.1 修订稿授权实施。  
+生效版本：v1.1（实施 commit 见 §9）。  
 回滚方案：
-- 代码：git revert 本提案相关 commit（`models_sd3d.py`/`compare_models_stats.py`/`model_gate.py`/`evidence_brain.py` 改动）。
+- 代码：git revert 本提案相关 commit（`models_sd3d.py`/`probability_metrics.py`/`compare_models_stats.py`/`model_gate.py`/`evidence_brain.py`/`build_teaching_report.py` 改动）。
 - 数据：不改 SQLite/JSONL/快照，零数据风险；报告为可重建产物，删除即可。
 
 ### 7.1 修订待办（重审前必须补齐）
@@ -129,7 +129,24 @@ extends：MODEL-SCREENING-AND-BRAIN-V2（2026-08-14，DRAFT；其第 6、8 节�
 3. **补 scorer→predict 适配器 + 契约单测**：在 `model_screening.py` 与 `models_sd3d.REGISTRY` 之间加 adapter 层，输出符合 `predict(train, top_k)->list[str]`；给出命名统一表（如 `recent_position_frequency_50` ↔ `recent_position_frequency`）；补单测保证 `run_pipeline.py` 调用契约不破坏。
 4. **修订认识论措辞**：删除"证明不可预测性"类正向表述；在提案与教学报告中显式区分"负向结论（未观测到优势）"与"正向证明（原理上不可预测）"，并列出残余不确定性清单（未覆盖家族、池化 vs 逐位、非线性/深度学习未纳入）。
 
-## 8. 实施步骤（待第二轮审计 ≥4/5 批准后方可执行）
+### 7.2 第二轮审计结论（v1.1 修订稿，2026-09-12）
+
+| 角色 | 投票 | 证据 |
+|---|---|---|
+| 数据溯源 | APPROVE | v1.1 仅改文档，数据契约/防泄漏规则未变，零数据风险 |
+| 统计方法 | APPROVE | gate:22 bug 已显式登记并定稿修复；BH-FDR 的 m/经验 p/门槛已预登记；认识论负向/正向区分与残余不确定性清单已落地 |
+| 工程复现 | APPROVE | screening_adapter + 契约单测 + 命名统一表已具体化；adapter 须先于集成过测 |
+| 存储恢复 | APPROVE | 回滚仍零数据风险；建议把 probability_metrics.py 补入回滚清单（已采纳，见上） |
+| 教学与伦理 | APPROVE | 正向证明语句已删除；负向/正向区分、残余不确定性清单、build-time 禁词扫描已落实 |
+
+法定人数：5/5。通过门槛：≥4/5。实际 **5 赞成 / 0 暂缓，达 ≥4/5 通过门槛**。数据溯源与存储恢复均未提出高风险否决 → **APPROVED**。
+
+非阻断建议（实施期已采纳/记录）：
+- 统计：经验 p 采用 `(1+#{≥obs})/(B+1)` 约定（已采纳）；文档 `m≥6` 与实际 `m=7`（7 个 challenger）一致。
+- 工程：命名统一表以真实可解析引用为准（adapter 按 scorer 闭包包装，`model_screening` 的 scorer 已对齐）。
+- 存储：回滚清单已补入 `probability_metrics.py`。
+
+## 8. 实施步骤（已批准并执行）
 
 > 下列步骤严格按 §7.1 修订待办顺序落地；任何一步未通过其单测/门禁即回滚，不进入下一期 `frozen-*.json` 预测。
 
