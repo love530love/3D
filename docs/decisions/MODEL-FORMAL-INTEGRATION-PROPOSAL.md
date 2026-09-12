@@ -195,3 +195,6 @@ extends：MODEL-SCREENING-AND-BRAIN-V2（2026-08-14，DRAFT；其第 6、8 节�
   3. §8 细化为含步骤 0（修复 `model_gate.py:22` 硬编码 bug）、适配器+契约单测、命名统一表、BH-FDR 实现位置的具体规格；
   4. §6/§7/§7.1 补齐第一轮审计五专家意见、投票表（2 赞成/3 暂缓）与修订待办。
   - 本修订仅改文档，未改任何模型/评估代码。待第二轮审计 ≥4/5 批准后执行 §8。
+- **v1.2（2026-09-12，实施）**：第二轮审计 5/5 批准。已落地 §8 全部步骤并经 `run_pipeline.py` 重跑验证——泄漏扫描 PASS、13/13 单测 PASS、brain verdict `NO_STABLE_PREDICTIVE_EDGE_OBSERVED`、gate `BASELINE_REQUIRED`。实施 commit `b9227c9`。
+  - 实测 7 个 challenger 的 BH-FDR `corrected_p` 全部 = 1.0（无 challenger 在 Bootstrap + 多重比较校正下存活），结论由"2 个同质频率 challenger"升级为"覆盖频率/Laplace/近期窗口/一阶马尔可夫多家族、防泄漏、Bootstrap + Benjamini–Hochberg 校正下一致未观测到稳定优势"的**负向**证据。
+  - 认识论：教学报告与提案均明确"负向结论 ≠ 正向证明"，并附残余不确定性清单；禁词扫描已生效。
