@@ -28,3 +28,7 @@ outball.csv
 prob_result.csv
 count_result.csv
 data.csv
+
+# Workbench generated artifacts (regenerable / cached)
+workbench/forecasts_cache.sqlite3
+dashboard.html
