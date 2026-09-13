@@ -121,6 +121,32 @@ def cmd_debate_arena(args: argparse.Namespace) -> int:
     return res["returncode"]
 
 
+def cmd_evolution_arena(args: argparse.Namespace) -> int:
+    extra = []
+    if args.last_n is not None:
+        extra += ["--last-n", str(args.last_n)]
+    if args.top_k is not None:
+        extra += ["--top-k", str(args.top_k)]
+    if args.alpha is not None:
+        extra += ["--alpha", str(args.alpha)]
+    if args.fdr_q is not None:
+        extra += ["--fdr-q", str(args.fdr_q)]
+    if args.max_gens is not None:
+        extra += ["--max-gens", str(args.max_gens)]
+    if args.oos_n is not None:
+        extra += ["--oos-n", str(args.oos_n)]
+    if args.new_per_gen is not None:
+        extra += ["--new-per-gen", str(args.new_per_gen)]
+    if args.prize is not None:
+        extra += ["--prize", str(args.prize)]
+    if args.cost is not None:
+        extra += ["--cost", str(args.cost)]
+    res = engine.run_function("evolution_arena", extra_args=extra)
+    for line in res["log"]:
+        print(line)
+    return res["returncode"]
+
+
 def cmd_run_type(fid: str) -> int:
     res = engine.run_function(fid)
     for line in res["log"]:
@@ -219,6 +245,17 @@ def build_parser() -> argparse.ArgumentParser:
     pd2.add_argument("--prize", type=float, default=1040.0, help="直选奖金")
     pd2.add_argument("--cost", type=float, default=2.0, help="每注成本")
     pd2.set_defaults(func=cmd_debate_arena)
+    pe = sub.add_parser("evolution_arena", help="自进化辩论擂台：激励账本 + AI自进化元循环 + 决策方向科学评价")
+    pe.add_argument("--last-n", type=int, default=200, help="回看期数")
+    pe.add_argument("--top-k", type=int, default=10, help="候选数")
+    pe.add_argument("--alpha", type=float, default=0.1, help="分布平滑系数")
+    pe.add_argument("--fdr-q", type=float, default=0.05, help="FDR 阈值")
+    pe.add_argument("--max-gens", type=int, default=3, help="最大代数")
+    pe.add_argument("--oos-n", type=int, default=60, help="OOS 盲窗期数")
+    pe.add_argument("--new-per-gen", type=int, default=8, help="每代新主张数")
+    pe.add_argument("--prize", type=float, default=1040.0, help="直选奖金")
+    pe.add_argument("--cost", type=float, default=2.0, help="每注成本")
+    pe.set_defaults(func=cmd_evolution_arena)
     sub.add_parser("decisions", help="列出决策记录").set_defaults(func=cmd_decisions)
     sub.add_parser("state", help="打印状态 JSON").set_defaults(func=cmd_state)
     sub.add_parser("print", help="打印决策摘要").set_defaults(func=cmd_print)

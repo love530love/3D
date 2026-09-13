@@ -112,6 +112,21 @@ th{color:var(--muted);font-weight:600;background:rgba(255,255,255,.02)}
 .dcard .dbelief{color:var(--muted);font-size:11px;margin:6px 0}
 .dcard .dmetrics{font-size:11px;line-height:1.5}
 .dcard .dreason{font-size:11px;color:var(--bad);margin-top:6px;line-height:1.5}
+.ledger-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:8px}
+.ledger-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;border-left:3px solid var(--accent)}
+.ledger-card .ll{color:var(--muted);font-size:11px}
+.ledger-card .lv{font-size:18px;font-weight:600;margin-top:4px}
+.ledger-card.pro .lv{color:var(--warn)}
+.ledger-card.con .lv{color:var(--ok)}
+.ledger-card .medal{display:inline-block;margin-top:6px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;background:rgba(210,153,34,.2);color:#d29922}
+.evo-table{width:100%;border-collapse:collapse;background:var(--card);border-radius:10px;overflow:hidden;margin-top:8px}
+.evo-table th,.evo-table td{padding:7px 9px;border-bottom:1px solid var(--border);font-size:12px;text-align:left}
+.evo-table th{color:var(--muted);font-weight:600;background:rgba(255,255,255,.02)}
+.tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:600}
+.tag.mutate{background:rgba(78,161,255,.18);color:#4ea1ff}
+.tag.random{background:rgba(139,152,168,.18);color:#93a1b1}
+.tag.comprehensive{background:rgba(210,153,34,.2);color:#d29922}
+.tag.base{background:rgba(63,185,80,.15);color:#3fb950}
 @media print{
   .params{display:none!important}
   .scrolltable{max-height:none!important;overflow:visible!important}
@@ -158,7 +173,7 @@ function renderKpis(){
   box.innerHTML=items.map(([l,v])=>`<div class="kpi"><div class="label">${l}</div><div class="value">${v??'—'}</div></div>`).join('');
 }
 function renderTabs(){
-  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['arena','模型竞技场'],['debate','双阵营辩论擂台'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
+  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['arena','模型竞技场'],['debate','双阵营辩论擂台'],['evolution','进化擂台'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
   document.getElementById('tabs').innerHTML=tabs.map(([id,t],i)=>`<button data-tab="${id}" class="${i===0?'active':''}">${t}</button>`).join('');
   document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('active'));
@@ -175,6 +190,7 @@ function showPanel(id){
   else if(id==='history')c.innerHTML=historyHtml();
   else if(id==='arena')c.innerHTML=arenaHtml();
   else if(id==='debate')c.innerHTML=debateHtml();
+  else if(id==='evolution')c.innerHTML=evolutionHtml();
   else if(id==='decisions')c.innerHTML=decisionsHtml();
   else if(id==='timeline')c.innerHTML=timelineHtml();
   else if(id==='reports')c.innerHTML=reportsHtml();
@@ -530,6 +546,132 @@ function debateTimeline(rounds){
   });
   s+=`</svg>`;
   return s;
+}
+function evolutionHtml(){
+  const r=STATE.evolution_arena;
+  if(!r)return '<div class="note">尚未运行「自进化辩论擂台」。在“功能”页运行 evolution_arena 生成闭环报告（约需 1–2 分钟）。</div>';
+  const cfg=r.config||{}, lg=r.ledger||{}, camps=(lg.camps)||{}, pro=camps.pro||{}, con=camps.con||{}, badges=lg.badges||{};
+  const dir=r.directional||{}, fv=r.final_verdict||{}, ar=r.arsenal||{}, oos=r.oos||{};
+  let h=`<div class="note">生成 ${r.generated_at} · 配置 ${JSON.stringify(cfg)} · 累计主张 ${(r.lineage||[]).length} 项，反方武器库 ${ar.n_tests||0} 项随机性检验</div>`;
+  h+=evolutionLedgerHtml(pro,con,badges);
+  h+=evolutionGauge(dir,fv);
+  h+=evolutionConvergence(r.generations||[], cfg.oos_n);
+  h+=evolutionLineage(r.lineage||[], r.evidence||[]);
+  h+=evolutionArsenal(ar);
+  h+=evolutionOOS(oos,cfg);
+  h+=evolutionFinal(fv,cfg);
+  return h;
+}
+function evolutionLedgerHtml(pro,con,badges){
+  const badgePro=badges.pro?'<span class="medal">'+badges.pro+'</span>':'';
+  const badgeCon=badges.con?'<span class="medal">'+badges.con+'</span>':'';
+  return `<div class="card" style="margin-bottom:14px"><h3>① 激励账本（双阵营积分 + 独立 Reputation + 徽章）</h3>
+    <div class="ledger-grid">
+      <div class="ledger-card pro"><div class="ll">正方 主张积分 AP</div><div class="lv">${pro.ap!=null?pro.ap.toFixed(1):'—'}</div>${badgePro}</div>
+      <div class="ledger-card pro"><div class="ll">正方 声望 Rep</div><div class="lv">${pro.rep!=null?pro.rep.toFixed(1):'—'}</div></div>
+      <div class="ledger-card pro"><div class="ll">提交/存活/撤回</div><div class="lv">${pro.submitted||0} / ${pro.survived||0} / ${pro.retracted||0}</div></div>
+      <div class="ledger-card con"><div class="ll">反方 纠错积分 RP</div><div class="lv">${con.rp!=null?con.rp.toFixed(1):'—'}</div>${badgeCon}</div>
+      <div class="ledger-card con"><div class="ll">反方 声望 Rep</div><div class="lv">${con.rep!=null?con.rep.toFixed(1):'—'}</div></div>
+      <div class="ledger-card con"><div class="ll">挑战/正确/误驳</div><div class="lv">${con.challenges||0} / ${con.correct||0} / ${con.wrongful||0}</div></div>
+    </div>
+    <div class="desc" style="margin-top:6px">规则：提交冻结押金(C_SUB=5)；经 FDR+安慰剂+复现+盈利闸全过 → 退还押金并按 merit_w 奖励 50×merit_w AP、Rep+4；被驳回没收押金、Rep-3；诚实撤回退押金+20AP、Rep+2。反方正确驳回得 30+10×decisiveness RP、Rep+3；误驳 Rep-5。Rep 与积分分离，科学权重优先。徽章：Bronze→Silver→Gold→Platinum 由 Rep 与战绩阈值决定。</div>
+  </div>`;
+}
+function evolutionGauge(dir,fv){
+  const score=dir.score||0, ci=dir.score_ci||[-1,1];
+  const W=680,H=120,pad=40;
+  const x=v=> pad + (Math.max(-1,Math.min(1,v))+1)/2*(W-2*pad);
+  const nullP975=(dir.null_calibration&&dir.null_calibration.score_null_p975)||1.0;
+  const nb0=x(-nullP975), nb1=x(nullP975);
+  const c0=x(ci[0]), c1=x(ci[1]);
+  const sx=x(score);
+  const verdictLabel=fv.winner_label||'-';
+  let s=`<svg class="chart" viewBox="0 0 ${W} ${H}">`;
+  s+=`<rect x="${x(-1)}" y="40" width="${(W-2*pad).toFixed(1)}" height="16" rx="8" fill="var(--border)"/>`;
+  s+=`<rect x="${nb0.toFixed(1)}" y="40" width="${(nb1-nb0).toFixed(1)}" height="16" fill="rgba(139,152,168,.35)"/>`;
+  s+=`<rect x="${c0.toFixed(1)}" y="34" width="${(c1-c0).toFixed(1)}" height="28" fill="rgba(78,161,255,.35)"/>`;
+  s+=`<line x1="${x(0)}" y1="28" x2="${x(0)}" y2="68" stroke="#93a1b1" stroke-dasharray="3 3"/>`;
+  s+=`<line x1="${sx.toFixed(1)}" y1="26" x2="${sx.toFixed(1)}" y2="70" stroke="var(--warn)" stroke-width="3"/>`;
+  s+=`<circle cx="${sx.toFixed(1)}" cy="48" r="6" fill="var(--warn)"/>`;
+  s+=`<text x="${x(-1)}" y="88" font-size="11" fill="#93a1b1">随机(H₀) -1</text>`;
+  s+=`<text x="${x(0)}" y="88" font-size="11" fill="#93a1b1" text-anchor="middle">0</text>`;
+  s+=`<text x="${x(1)}" y="88" font-size="11" fill="#93a1b1" text-anchor="end">可预测(H⁺) +1</text>`;
+  s+=`<text x="${sx.toFixed(1)}" y="106" font-size="12" fill="var(--warn)" text-anchor="middle">score=${score.toFixed(3)}</text>`;
+  s+='</svg>';
+  const cls=fv.winner==='random'?'ok':(fv.winner==='weak_signal'?'warn':'nd');
+  let h=`<div class="card" style="margin-bottom:14px"><h3>③ 决策方向科学评价（单一方向标量 score=tanh(Z)∈(−1,+1)）</h3>
+    ${s}
+    <div class="desc">灰带=零分布 97.5% 区间(±${nullP975.toFixed(2)}，落入即"与随机不可区分")；蓝带=score 的 95% CI=${JSON.stringify(ci)}。信心(可预测)=${dir.confidence_predictable!=null?dir.confidence_predictable.toFixed(3):'-'} · 等价随机信心=${dir.confidence_random_equiv!=null?dir.confidence_random_equiv.toFixed(3):'-'} · Fisher p=${dir.fisher_p!=null?dir.fisher_p.toFixed(4):'-'} · Stouffer Z=${dir.stouffer_z!=null?dir.stouffer_z.toFixed(3):'-'} · 组合BF=${dir.bayes_factor_portfolio!=null?dir.bayes_factor_portfolio.toFixed(3):'-'} · 最大效应量h=${dir.max_effect_h!=null?dir.max_effect_h.toFixed(3):'-'} · 结论 ${dir.conclusion}</div>
+    <div class="arena-banner" style="margin-top:10px"><div class="ab ${cls}"><div class="l">最终裁决</div><div class="v" style="font-size:14px">${verdictLabel}</div></div></div>
+  </div>`;
+  return h;
+}
+function evolutionConvergence(gens, oosN){
+  if(!gens.length)return '<div class="card" style="margin-bottom:14px"><h3>② 自进化元循环 · 谱系收敛</h3><div class="note">无代际数据</div></div>';
+  const scores=gens.map(g=>g.score||0);
+  let h=`<div class="card" style="margin-bottom:14px"><h3>② 自进化元循环 · 谱系收敛</h3>`;
+  h+=`<table class="evo-table"><thead><tr><th>代 gen</th><th>候选数</th><th>FDR 存活</th><th>方向得分 score</th><th>CI</th><th>Fisher p</th></tr></thead><tbody>`;
+  gens.forEach(g=>{
+    h+=`<tr><td>${g.generation}</td><td>${g.n_claims}</td><td>${g.n_survivors}</td><td>${g.score!=null?g.score.toFixed(3):'-'}</td><td>${JSON.stringify(g.score_ci||[])}</td><td>${g.fisher_p!=null?g.fisher_p.toFixed(4):'-'}</td></tr>`;
+  });
+  h+='</tbody></table>';
+  h+=`<div class="note">各代方向得分（−1 随机 … +1 可预测）：</div>`;
+  h+=svgLine(scores,{min:-1,max:1,color:'#d29922'});
+  h+=`<div class="desc">收敛判据：连续两代 0 存活 且 方向得分≈0 → 宣布纯随机并停止生成。生成越多假设，全局 FDR 阈值越严（q_eff=q0×m0/m，防数据淘金）；OOS 盲窗训练严格限定在末 ${oosN||''} 期之前。</div>`;
+  return h+'</div>';
+}
+function evolutionLineage(lineage, evidence){
+  void evidence;
+  let h=`<div class="card" style="margin-bottom:14px"><h3>谱系与适应度（parent→child 自进化树）</h3>`;
+  if(!lineage.length){h+='<div class="note">无谱系数据</div>';return h+'</div>';}
+  const tagMap={mutate:'突变',random:'随机',comprehensive:'综合','':'基'};
+  const tagCls={mutate:'mutate',random:'random',comprehensive:'comprehensive','':'base'};
+  h+=`<div class="scrolltable"><table class="evo-table"><thead><tr><th>主张</th><th>代</th><th>来源</th><th>族</th><th>命中率/基线</th><th>双侧p</th><th>h</th><th>BF</th><th>FDR存活</th><th>状态</th></tr></thead><tbody>`;
+  lineage.forEach(l=>{
+    const f=l.fitness||{}, origin=l.origin||'';
+    const ot=tagMap[origin]||'基'; const oc=tagCls[origin]||'base';
+    const surv=f.fdr_survivor?'✓':'✗';
+    const survCls=f.fdr_survivor?'hit-ok':'hit-no';
+    h+=`<tr><td class="mono" title="${l.claim_id}">${(l.claim_id||'').slice(0,22)}</td><td>${l.generation}</td><td><span class="tag ${oc}">${ot}</span></td><td>${l.family||'-'}</td><td>${(f.exact_rate*100).toFixed(2)}% / ${(f.expected_exact_rate*100).toFixed(2)}%</td><td>${f.two_sided_p!=null?f.two_sided_p.toFixed(3):'-'}</td><td>${f.effect_size_h!=null?f.effect_size_h.toFixed(3):'-'}</td><td>${f.bayes_factor!=null?f.bayes_factor.toFixed(2):'-'}</td><td class="${survCls}">${surv}</td><td>${l.status}</td></tr>`;
+  });
+  h+='</tbody></table></div>';
+  return h+'</div>';
+}
+function evolutionArsenal(ar){
+  let h=`<div class="card" style="margin-bottom:14px"><h3>反方武器库 · 随机性检验（${ar.n_tests||0} 项）</h3><div class="desc">${ar.summary||''}</div>`;
+  if(ar.tests&&ar.tests.length){
+    h+='<div class="scrolltable"><table class="evo-table"><thead><tr><th>位置</th><th>检验</th><th>统计量</th><th>p</th><th>结论</th></tr></thead><tbody>';
+    ar.tests.forEach(t=>{
+      h+=`<tr><td>${t.position}</td><td>${t.name}</td><td>${t.stat}</td><td>${t.p}</td><td><span class="verdict-pill ${t.rejects?'worse':'nd'}">${t.rejects?'偏离均匀':'未拒绝'}</span></td></tr>`;
+    });
+    h+='</tbody></table></div>';
+  }
+  h+='</div>';
+  return h;
+}
+function evolutionOOS(oos,cfg){
+  const oosSurv=(oos.survivors||[]);
+  let h=`<div class="card" style="margin-bottom:14px"><h3>末 ${cfg.oos_n||0} 期 OOS 盲评（训练严格限定在盲窗之前，防数据淘金）</h3><div class="desc">${oos.note||''}</div>`;
+  if(oosSurv.length){
+    h+='<table class="evo-table"><thead><tr><th>主张</th><th>样本n</th><th>命中率</th><th>盲评超基线p</th><th>盲评判定</th></tr></thead><tbody>';
+    oosSurv.forEach(r=>{
+      h+=`<tr><td class="mono">${r.claim}</td><td>${r.n}</td><td>${(r.exact_rate*100).toFixed(2)}%</td><td>${r.oos_exceeds_p!=null?r.oos_exceeds_p.toFixed(4):'-'}</td><td>${r.oos_verdict}</td></tr>`;
+    });
+    h+='</tbody></table>';
+  }else{
+    h+='<div class="note">无 FDR 存活主张进入盲评（符合纯随机预期）。</div>';
+  }
+  h+='</div>';
+  return h;
+}
+function evolutionFinal(fv,cfg){
+  let h=`<div class="card" style="margin-bottom:14px;border-left:3px solid var(--accent)"><h3>最终结论</h3><div class="desc">${fv.conclusion||''}</div>`;
+  if(fv.profit_per_bet!=null){
+    const ppb=fv.profit_per_bet;
+    h+=`<div class="desc" style="margin-top:8px">每注期望收益（扣除成本后）：<b style="color:${ppb>0?'var(--ok)':'var(--bad)'}">¥${ppb.toFixed(2)}</b>（直选奖金¥${cfg.prize}，每注¥${cfg.cost_per_number}，候选${cfg.top_k}注/期）</div>`;
+  }
+  h+=`<div class="desc" style="margin-top:8px;color:var(--muted)">${fv.disclaimer||''}</div></div>`;
+  return h;
 }
 function backtestHtml(){
   const fb=STATE.backtest;

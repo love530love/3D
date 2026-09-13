@@ -338,6 +338,27 @@ FUNCTIONS: list[dict] = [
             {"name": "每注成本", "flag": "--cost", "type": "float", "default": 2.0, "help": "每注成本（元）"},
         ],
     },
+    {
+        "id": "evolution_arena",
+        "title": "自进化辩论擂台 evolution_arena",
+        "script": "__evolution_arena__",
+        "args": [],
+        "risk": "L1",
+        "category": "对比",
+        "desc": "① 激励账本(正方AP/反方RP + 独立Reputation + 徽章) ② AI 自进化元循环(突变/随机/综合问题生成器 + OOS盲窗 + 全局FDR递增惩罚) ③ 决策方向科学评价(单一方向标量 score=tanh(Z) + CI + TOST等价措辞)。把辩论擂台升级为闭环元系统，让正反双方主张/纠错被量化奖惩，系统随时间自我进化并持续评估'是否可预测'。只读权威库。",
+        "confirm": False,
+        "params": [
+            {"name": "回看期数 last_n", "flag": "--last-n", "type": "int", "default": 200, "help": "严格时间顺序训练评估窗口期数"},
+            {"name": "候选数 top_k", "flag": "--top-k", "type": "int", "default": 10, "help": "每主张候选个数"},
+            {"name": "分布平滑 alpha", "flag": "--alpha", "type": "float", "default": 0.1, "help": "分布平滑系数"},
+            {"name": "FDR 阈值 q", "flag": "--fdr-q", "type": "float", "default": 0.05, "help": "多重比较校正阈值"},
+            {"name": "最大代数 max_gens", "flag": "--max-gens", "type": "int", "default": 3, "help": "自进化元循环代数上限"},
+            {"name": "OOS 盲窗 oos_n", "flag": "--oos-n", "type": "int", "default": 60, "help": "末 N 期盲评窗口（训练严格限定在其中之前）"},
+            {"name": "每代新主张 new_per_gen", "flag": "--new-per-gen", "type": "int", "default": 8, "help": "每代新生成(突变/合成)主张数"},
+            {"name": "直选奖金", "flag": "--prize", "type": "float", "default": 1040.0, "help": "中奖奖金（元），用于可盈利性判定"},
+            {"name": "每注成本", "flag": "--cost", "type": "float", "default": 2.0, "help": "每注成本（元）"},
+        ],
+    },
 ]
 
 
