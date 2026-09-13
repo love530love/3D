@@ -319,6 +319,25 @@ FUNCTIONS: list[dict] = [
             {"name": "分布平滑 alpha", "flag": "--alpha", "type": "float", "default": 0.1, "help": "分布平滑系数"},
         ],
     },
+    {
+        "id": "debate_arena",
+        "title": "双阵营辩论擂台 debate_arena",
+        "script": "__debate_arena__",
+        "args": [],
+        "risk": "L1",
+        "category": "对比",
+        "desc": "双阵营对抗辩论：正方(可预测派)出尽15项人类'可预测'主张（热号/冷号/和值/跨度/奇偶/质合/连号/镜像/重号/趋势/聚簇/均值回归/ML特征），反方(科学随机派)以完整统计武器库（卡方/游程/自相关/熵/Ljung-Box/最大连号/结构断点 + Benjamini-Hochberg FDR + 安慰剂/可复现/贝叶斯因子/效应量）逐一审计；双方多轮迭代，最终诚实总结谁占优、是否存在可盈利信号。只读权威库。",
+        "confirm": False,
+        "params": [
+            {"name": "回看期数 last_n", "flag": "--last-n", "type": "int", "default": 200, "help": "严格时间顺序回测期数（越大统计功效越高；ML 方案较耗时）"},
+            {"name": "候选数 top_k", "flag": "--top-k", "type": "int", "default": 10, "help": "每方案候选个数"},
+            {"name": "分布平滑 alpha", "flag": "--alpha", "type": "float", "default": 0.1, "help": "分布平滑系数"},
+            {"name": "FDR 阈值 q", "flag": "--fdr-q", "type": "float", "default": 0.05, "help": "多重比较校正阈值"},
+            {"name": "最大轮次", "flag": "--max-rounds", "type": "int", "default": 4, "help": "对抗迭代轮次上限"},
+            {"name": "直选奖金", "flag": "--prize", "type": "float", "default": 1040.0, "help": "中奖奖金（元），用于可盈利性判定"},
+            {"name": "每注成本", "flag": "--cost", "type": "float", "default": 2.0, "help": "每注成本（元）"},
+        ],
+    },
 ]
 
 

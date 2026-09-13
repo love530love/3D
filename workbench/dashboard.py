@@ -105,6 +105,13 @@ th{color:var(--muted);font-weight:600;background:rgba(255,255,255,.02)}
 .verdict-pill.nd{background:rgba(139,152,168,.18);color:var(--l0)}
 .verdict-pill.better{background:rgba(63,185,80,.18);color:var(--ok)}
 .verdict-pill.worse{background:rgba(248,81,73,.18);color:var(--bad)}
+.debate-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-top:8px}
+.dcard{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.dcard .dhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.dcard .dname{font-weight:600;font-size:13px}
+.dcard .dbelief{color:var(--muted);font-size:11px;margin:6px 0}
+.dcard .dmetrics{font-size:11px;line-height:1.5}
+.dcard .dreason{font-size:11px;color:var(--bad);margin-top:6px;line-height:1.5}
 @media print{
   .params{display:none!important}
   .scrolltable{max-height:none!important;overflow:visible!important}
@@ -151,7 +158,7 @@ function renderKpis(){
   box.innerHTML=items.map(([l,v])=>`<div class="kpi"><div class="label">${l}</div><div class="value">${v??'—'}</div></div>`).join('');
 }
 function renderTabs(){
-  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['arena','模型竞技场'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
+  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['arena','模型竞技场'],['debate','双阵营辩论擂台'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
   document.getElementById('tabs').innerHTML=tabs.map(([id,t],i)=>`<button data-tab="${id}" class="${i===0?'active':''}">${t}</button>`).join('');
   document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('active'));
@@ -167,6 +174,7 @@ function showPanel(id){
   else if(id==='multi_method')c.innerHTML=multiMethodHtml();
   else if(id==='history')c.innerHTML=historyHtml();
   else if(id==='arena')c.innerHTML=arenaHtml();
+  else if(id==='debate')c.innerHTML=debateHtml();
   else if(id==='decisions')c.innerHTML=decisionsHtml();
   else if(id==='timeline')c.innerHTML=timelineHtml();
   else if(id==='reports')c.innerHTML=reportsHtml();
@@ -427,6 +435,101 @@ function arenaHtml(){
 
   h+=`<div class="note">${a.disclaimer||''}</div>`;
   return h;
+}
+function debateHtml(){
+  const a=STATE.debate_arena;
+  if(!a)return '<div class="note">尚未运行「双阵营辩论擂台」。在“功能”页运行 debate_arena 生成对抗辩论报告（约需 1–2 分钟）。</div>';
+  const sb=a.scoreboard||{}, fv=a.final_verdict||{}, da=a.dual_axis||{}, ar=a.arsenal||{};
+  let h=`<div class="note">生成 ${a.generated_at} · 配置 ${JSON.stringify(a.config)} · 正方主张 ${sb.claims_total} 项，反方武器库 ${ar.n_tests||0} 项随机性检验</div>`;
+
+  const proCls = sb.survivors_fdr>0?'bad':'ok';
+  h+=`<div class="arena-banner">
+    <div class="ab ${proCls}"><div class="l">正方(可预测派) 主张存活率</div><div class="v">${(sb.pro_score*100).toFixed(0)}% (${sb.survivors_fdr}/${sb.claims_total})</div></div>
+    <div class="ab ${proCls}"><div class="l">反方(科学随机派) 审核通过率</div><div class="v">${(sb.anti_score*100).toFixed(0)}%</div></div>
+    <div class="ab ${proCls}"><div class="l">原始显著 → FDR 后仍存活</div><div class="v">${sb.survivors_fdr}</div></div>
+    <div class="ab ${proCls}"><div class="l">最终裁决</div><div class="v" style="font-size:14px">${fv.winner_label||'-'}</div></div>
+  </div>`;
+
+  h+=`<div class="card" style="margin-bottom:14px"><h3>可信度 vs 统计强度</h3>${debateGauge(da)}</div>`;
+
+  h+=`<div class="card" style="margin-bottom:14px"><h3>反方武器库 · 随机性检验</h3><div class="desc">${ar.summary||''}</div>`;
+  h+='<table><thead><tr><th>位置</th><th>检验</th><th>统计量</th><th>p</th><th>结论</th></tr></thead><tbody>';
+  (ar.tests||[]).forEach(t=>{
+    const cls=t.rejects?'bad':'ok';
+    h+=`<tr><td>${t.position}</td><td>${t.name}</td><td>${t.stat}</td><td>${t.p}</td><td><span class="verdict-pill ${t.rejects?'worse':'nd'}">${t.rejects?'偏离均匀':'未拒绝'}</span></td></tr>`;
+  });
+  h+='</tbody></table></div>';
+
+  h+=`<h3>证据卡片 · 正方主张 vs 反方审计</h3><div class="debate-cards">`;
+  (a.evidence||[]).forEach(e=>{
+    const vt=e.rejected?'nd':(e.fdr_survivor?'better':'worse');
+    const pill = e.rejected? '已驳回' : (e.fdr_survivor?'FDR存活':'原始显著');
+    const ts = e.two_sided_p!=null ? (e.two_sided_p.toFixed? e.two_sided_p.toFixed(3) : e.two_sided_p) : '-';
+    const hv = e.effect_size_h!=null ? (e.effect_size_h.toFixed? e.effect_size_h.toFixed(3) : e.effect_size_h) : '-';
+    const bf = e.bayes_factor!=null ? (e.bayes_factor.toFixed? e.bayes_factor.toFixed(2) : e.bayes_factor) : '-';
+    let extra='';
+    if(e.placebo_exceed_p!=null) extra+=` · 安慰剂p=${e.placebo_exceed_p.toFixed(3)}`;
+    if(e.split_half_consistent!=null) extra+=` · 可复现=${e.split_half_consistent?'是':'否'}`;
+    h+=`<div class="dcard">
+      <div class="dhead"><span class="dname">${e.name}</span><span class="verdict-pill ${vt}">${pill}</span></div>
+      <div class="dbelief">${e.belief}</div>
+      <div class="dmetrics">命中率 ${(e.exact_rate*100).toFixed(2)}% / 基线 ${(e.expected_exact_rate*100).toFixed(2)}% · 双侧p ${ts} · 效应量h ${hv} · BF ${bf}</div>
+      <div class="dreason">反方：${e.reject_reason||''}${extra}</div>
+    </div>`;
+  });
+  h+='</div>';
+
+  h+=`<div class="card" style="margin-top:14px"><h3>对抗轮次时间线</h3>${debateTimeline(a.rounds)}</div>`;
+
+  h+=`<div class="card" style="margin-top:14px;border-left:3px solid var(--accent)"><h3>最终结论</h3><div class="desc">${fv.conclusion||''}</div><div class="desc" style="margin-top:8px">${fv.fdr_note||''}</div>`;
+  if(fv.profit_per_bet!=null){
+    const ppb=fv.profit_per_bet;
+    h+=`<div class="desc" style="margin-top:8px">每注期望收益（扣除成本后）：<b style="color:${ppb>0?'var(--ok)':'var(--bad)'}">¥${ppb.toFixed(2)}</b>（直选奖金¥${a.config.prize}，每注¥${a.config.cost_per_number}，候选${a.config.top_k}注/期）</div>`;
+  }
+  h+=`<div class="desc" style="margin-top:8px;color:var(--muted)">${fv.disclaimer||''}</div></div>`;
+  return h;
+}
+function debateGauge(da){
+  const bel=(da.believability||0)*100, str=(da.statistical_strength||0)*100;
+  let s=`<svg class="chart" viewBox="0 0 680 64">`;
+  s+=`<text x="20" y="18" font-size="12" fill="var(--text)">人类可信度（正方说服力）</text>`;
+  s+=`<rect x="20" y="22" width="640" height="12" rx="6" fill="var(--border)"/>`;
+  s+=`<rect x="20" y="22" width="${640*bel/100}" height="12" rx="6" fill="var(--warn)"/>`;
+  s+=`<text x="664" y="33" font-size="11" fill="var(--warn)" text-anchor="end">${bel.toFixed(0)}%</text>`;
+  s+=`<text x="20" y="50" font-size="12" fill="var(--text)">统计强度（反方证据力）</text>`;
+  s+=`<rect x="20" y="54" width="640" height="12" rx="6" fill="var(--border)"/>`;
+  s+=`<rect x="20" y="54" width="${640*str/100}" height="12" rx="6" fill="var(--ok)"/>`;
+  s+=`<text x="664" y="65" font-size="11" fill="var(--ok)" text-anchor="end">${str.toFixed(0)}%</text>`;
+  s+=`</svg>`;
+  const r=da.radar||{};
+  const dims=[['命中率边缘',r.命中率边缘],['FDR存活',r.FDR存活],['可盈利性',r.可盈利性],['可复现',r.可复现],['安慰剂稳健',r.安慰剂稳健]];
+  const cx=170,cy=90,R=70,n=dims.length;
+  let pts='';
+  const coords=dims.map((d,i)=>{const ang=-Math.PI/2+2*Math.PI*i/n;const v=Math.max(0,Math.min(1,d[1]||0));const x=cx+R*v*Math.cos(ang);const y=cy+R*v*Math.sin(ang);pts+=x.toFixed(1)+','+y.toFixed(1)+' ';return {x,y,ang,d};});
+  s+=`<svg class="chart" viewBox="0 0 340 180" style="display:inline-block;vertical-align:top">`;
+  for(let g=1;g<=4;g++){let gp='';for(let i=0;i<n;i++){const ang=-Math.PI/2+2*Math.PI*i/n;const x=cx+R*g/4*Math.cos(ang);const y=cy+R*g/4*Math.sin(ang);gp+=x.toFixed(1)+','+y.toFixed(1)+' ';}s+=`<polygon points="${gp}" fill="none" stroke="var(--border)" stroke-width="1"/>`;}
+  for(let i=0;i<n;i++){const ang=-Math.PI/2+2*Math.PI*i/n;const x=cx+R*Math.cos(ang);const y=cy+R*Math.sin(ang);s+=`<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>`;}
+  s+=`<polygon points="${pts}" fill="rgba(210,153,34,.25)" stroke="var(--warn)" stroke-width="2"/>`;
+  coords.forEach(c=>{s+=`<text x="${(cx+(R+16)*Math.cos(c.ang)).toFixed(1)}" y="${(cy+(R+16)*Math.sin(c.ang)).toFixed(1)}" font-size="10" fill="var(--muted)">${c.d[0]}</text>`;});
+  s+=`<text x="${cx}" y="174" font-size="11" fill="var(--muted)" text-anchor="middle">五维评估雷达</text>`;
+  s+=`</svg>`;
+  return s;
+}
+function debateTimeline(rounds){
+  if(!rounds||!rounds.length)return '<div class="note">无轮次数据</div>';
+  const W=680,H=92,n=rounds.length,gap=W/n;
+  let s=`<svg class="chart" viewBox="0 0 ${W} ${H}">`;
+  rounds.forEach((r,i)=>{
+    const x=gap*i+gap/2;
+    s+=`<line x1="${x}" y1="28" x2="${x}" y2="${H-18}" stroke="var(--border)"/>`;
+    s+=`<circle cx="${x}" cy="28" r="11" fill="var(--accent)"/>`;
+    s+=`<text x="${x}" y="32" font-size="11" fill="#fff" text-anchor="middle">${r.round}</text>`;
+    s+=`<text x="${x}" y="54" font-size="11" fill="var(--text)" text-anchor="middle">${r.n_claims}项</text>`;
+    s+=`<text x="${x}" y="70" font-size="11" fill="var(--ok)" text-anchor="middle">存活${r.n_survivors}</text>`;
+    s+=`<text x="${x}" y="84" font-size="9" fill="var(--muted)" text-anchor="middle">第${r.round}轮</text>`;
+  });
+  s+=`</svg>`;
+  return s;
 }
 function backtestHtml(){
   const fb=STATE.backtest;

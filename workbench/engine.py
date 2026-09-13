@@ -68,6 +68,8 @@ def run_function(func_id: str, extra_args=None, on_line=None) -> dict:
         return _run_history_stats(extra_args, on_line)
     if func["script"] == "__predictive_arena__":
         return _run_predictive_arena(extra_args, on_line)
+    if func["script"] == "__debate_arena__":
+        return _run_debate_arena(extra_args, on_line)
 
     script_path = ROOT / func["script"]
     if not script_path.exists():
@@ -275,6 +277,54 @@ def _run_predictive_arena(extra_args=None, on_line=None) -> dict:
         for line in log:
             on_line(line)
     return {"returncode": 0, "log": log, "produced": ["predictive-arena-latest.json"]}
+
+
+def _run_debate_arena(extra_args=None, on_line=None) -> dict:
+    """Generate the two-camp adversarial debate report (双阵营辩论擂台)."""
+    import argparse
+
+    from . import debate_arena as da
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--last-n", type=int, default=200)
+    ap.add_argument("--top-k", type=int, default=10)
+    ap.add_argument("--alpha", type=float, default=0.1)
+    ap.add_argument("--fdr-q", type=float, default=0.05)
+    ap.add_argument("--max-rounds", type=int, default=4)
+    ap.add_argument("--prize", type=float, default=1040.0)
+    ap.add_argument("--cost", type=float, default=2.0)
+    try:
+        a = ap.parse_args(extra_args or [])
+    except SystemExit:
+        return {"returncode": 2, "log": ["参数解析失败（debate_arena）。"], "produced": []}
+
+    log: list[str] = []
+    try:
+        report = da.run_debate(
+            DB, last_n=a.last_n, top_k=a.top_k, alpha=a.alpha,
+            fdr_q=a.fdr_q, max_rounds=a.max_rounds, prize=a.prize, cost=a.cost,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        return {"returncode": 1, "log": [f"生成双阵营辩论擂台失败: {exc}"], "produced": []}
+
+    out = REPORTS / "debate-arena-latest.json"
+    try:
+        da.write_report(report, out)
+    except Exception as exc:
+        return {"returncode": 1, "log": [f"写入报告失败: {exc}"], "produced": []}
+    log.append(f"Wrote {out}")
+    sb = report.get("scoreboard", {})
+    fv = report.get("final_verdict", {})
+    log.append(
+        f"正方主张 {sb.get('claims_total')} 项 · FDR存活 {sb.get('survivors_fdr')} 项 · "
+        f"反方武器库 {report.get('arsenal', {}).get('n_tests')} 项检验"
+    )
+    log.append(f"裁决: {fv.get('winner_label', '')}")
+    log.append(f"结论: {fv.get('conclusion', '')}")
+    if on_line:
+        for line in log:
+            on_line(line)
+    return {"returncode": 0, "log": log, "produced": ["debate-arena-latest.json"]}
 
 
 def load_report(name: str):
@@ -500,4 +550,5 @@ def collect_state() -> dict:
         "multi_method": load_report("multi-method-latest.json"),
         "history_stats": load_report("history-stats-latest.json"),
         "predictive_arena": load_report("predictive-arena-latest.json"),
+        "debate_arena": load_report("debate-arena-latest.json"),
     }

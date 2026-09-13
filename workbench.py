@@ -99,6 +99,28 @@ def cmd_predictive_arena(args: argparse.Namespace) -> int:
     return res["returncode"]
 
 
+def cmd_debate_arena(args: argparse.Namespace) -> int:
+    extra = []
+    if args.last_n is not None:
+        extra += ["--last-n", str(args.last_n)]
+    if args.top_k is not None:
+        extra += ["--top-k", str(args.top_k)]
+    if args.alpha is not None:
+        extra += ["--alpha", str(args.alpha)]
+    if args.fdr_q is not None:
+        extra += ["--fdr-q", str(args.fdr_q)]
+    if args.max_rounds is not None:
+        extra += ["--max-rounds", str(args.max_rounds)]
+    if args.prize is not None:
+        extra += ["--prize", str(args.prize)]
+    if args.cost is not None:
+        extra += ["--cost", str(args.cost)]
+    res = engine.run_function("debate_arena", extra_args=extra)
+    for line in res["log"]:
+        print(line)
+    return res["returncode"]
+
+
 def cmd_run_type(fid: str) -> int:
     res = engine.run_function(fid)
     for line in res["log"]:
@@ -188,6 +210,15 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("--top-k", type=int, default=10, help="候选数")
     pa.add_argument("--alpha", type=float, default=0.1, help="分布平滑系数")
     pa.set_defaults(func=cmd_predictive_arena)
+    pd2 = sub.add_parser("debate_arena", help="双阵营辩论擂台：正方(可预测派) vs 反方(科学随机派) 对抗审计")
+    pd2.add_argument("--last-n", type=int, default=200, help="回看期数")
+    pd2.add_argument("--top-k", type=int, default=10, help="候选数")
+    pd2.add_argument("--alpha", type=float, default=0.1, help="分布平滑系数")
+    pd2.add_argument("--fdr-q", type=float, default=0.05, help="FDR 阈值")
+    pd2.add_argument("--max-rounds", type=int, default=4, help="最大轮次")
+    pd2.add_argument("--prize", type=float, default=1040.0, help="直选奖金")
+    pd2.add_argument("--cost", type=float, default=2.0, help="每注成本")
+    pd2.set_defaults(func=cmd_debate_arena)
     sub.add_parser("decisions", help="列出决策记录").set_defaults(func=cmd_decisions)
     sub.add_parser("state", help="打印状态 JSON").set_defaults(func=cmd_state)
     sub.add_parser("print", help="打印决策摘要").set_defaults(func=cmd_print)
