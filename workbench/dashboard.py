@@ -67,8 +67,36 @@ th{color:var(--muted);font-weight:600;background:rgba(255,255,255,.02)}
 .params .p{display:flex;flex-direction:column;font-size:11px;color:var(--muted)}
 .params .p input{margin-top:3px;width:112px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;font-size:13px}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.scrolltable{max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:10px;margin-bottom:6px}
+.scrolltable table{font-size:12px}
+.freqgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.freq{width:100%;border-collapse:collapse}
+.freq td,.freq th{padding:3px 6px;border-bottom:1px solid var(--border);font-size:12px;text-align:left}
+.omit-hot{color:var(--ok);font-weight:600}
+.omit-cold{color:var(--bad);font-weight:600}
+.catgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.barline{display:flex;align-items:center;gap:6px;font-size:12px;margin:3px 0}
+.blabel{width:54px;color:var(--muted);flex:none}
+.btrack{flex:1;background:rgba(255,255,255,.04);border-radius:4px;height:12px;overflow:hidden}
+.bfill{display:block;height:100%;background:var(--accent);border-radius:4px}
+.bval{width:30px;text-align:right;color:var(--muted);flex:none}
+.hcgrid{display:flex;flex-wrap:wrap;gap:6px}
+.hc{display:inline-block;padding:4px 10px;border-radius:8px;font-family:ui-monospace,monospace;font-size:13px;border:1px solid var(--border)}
+.hc.hot{background:rgba(248,81,73,.18);color:#f85149;border-color:rgba(248,81,73,.4)}
+.hc.cold{background:rgba(78,161,255,.18);color:#4ea1ff;border-color:rgba(78,161,255,.4)}
+.hc.neutral{color:var(--muted)}
+.badge.type{padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.badge.type.bz{background:rgba(210,153,34,.2);color:#d29922}
+.badge.type.z3{background:rgba(63,185,80,.18);color:#3fb950}
+.badge.type.z6{background:rgba(139,152,168,.18);color:#93a1b1}
+.chart{width:100%;height:auto;display:block;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:6px}
+.chart text{font-family:ui-monospace,monospace}
+.hit-ok{color:var(--ok);font-weight:600}
+.hit-no{color:var(--muted)}
+.hcell small{color:var(--muted);font-weight:400}
 @media print{
   .params{display:none!important}
+  .scrolltable{max-height:none!important;overflow:visible!important}
   :root{--bg:#fff;--panel:#fff;--card:#fff;--text:#111;--muted:#444;--border:#ccc}
   body{background:#fff;color:#111}
   nav.tabs,.console,button.run{display:none!important}
@@ -112,7 +140,7 @@ function renderKpis(){
   box.innerHTML=items.map(([l,v])=>`<div class="kpi"><div class="label">${l}</div><div class="value">${v??'—'}</div></div>`).join('');
 }
 function renderTabs(){
-  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
+  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
   document.getElementById('tabs').innerHTML=tabs.map(([id,t],i)=>`<button data-tab="${id}" class="${i===0?'active':''}">${t}</button>`).join('');
   document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('active'));
@@ -126,6 +154,7 @@ function showPanel(id){
   else if(id==='functions')c.innerHTML=functionsHtml();
   else if(id==='backtest')c.innerHTML=backtestHtml();
   else if(id==='multi_method')c.innerHTML=multiMethodHtml();
+  else if(id==='history')c.innerHTML=historyHtml();
   else if(id==='decisions')c.innerHTML=decisionsHtml();
   else if(id==='timeline')c.innerHTML=timelineHtml();
   else if(id==='reports')c.innerHTML=reportsHtml();
@@ -173,8 +202,8 @@ function multiMethodHtml(){
   if(!mm)return '<div class="note">尚未运行「多方法对比」。在“功能”页运行 multi_method 生成对比报告。</div>';
   const lp=mm.last_period_compare||{};
   const actual=mm.actual_last;
-  let h=`<div class="note">生成 ${mm.generated_at} · 配置 ${JSON.stringify(mm.config)} · 最近一期 期号 ${mm.last_period} 实开 <b>${actual}</b></div>`;
-  h+=`<h3>最近一期：各方法预测 vs 实开 ${actual}</h3>`;
+  let h=`<div class="note">生成 ${mm.generated_at} · 配置 ${JSON.stringify(mm.config)} · 最近一期 期号 ${mm.last_period}（${lp.date||'未知日期'}）实开 <b>${actual}</b></div>`;
+  h+=`<h3>最近一期（期号 ${lp.period||mm.last_period} · ${lp.date||'未知日期'}）：各方法预测 vs 实开 ${actual}</h3>`;
   h+=`<table><thead><tr><th>方法</th><th>Top候选(前10)</th><th>精确命中</th><th>位命中(0-3)</th><th>数字偏差</th><th>log-loss</th></tr></thead><tbody>`;
   (lp.methods||[]).forEach(m=>{
     const met=m.metrics||{};
@@ -192,7 +221,157 @@ function multiMethodHtml(){
     h+=`<tr><td>${mid}</td><td>${(s.exact_rate*100).toFixed(1)}%</td><td>${(s.mean_position_top1*100).toFixed(1)}%</td><td>${(s.mean_position_topk*100).toFixed(1)}%</td><td>${s.mean_digit_divergence.toFixed(2)}</td><td>${s.mean_log_loss!=null?s.mean_log_loss.toFixed(3):'-'}</td><td>${s.n}</td></tr>`;
   });
   h+='</tbody></table>';
-  h+=`<div class="note">${wa.disclaimer||''}</div>`;
+
+  // NEW: 下期预测（盲评用，开奖前不可知）
+  const np=mm.next_period||{};
+  h+=`<h3>下期预测：期号 ${np.period||'-'}（基于截至 ${np.trained_on_periods_up_to||'-'}${np.trained_on_date?'（'+np.trained_on_date+'）':''} 的数据，盲评用途，开奖前不可知）</h3>`;
+  h+=`<table><thead><tr><th>方法</th><th>Top候选(前10)</th><th>百位分布Top3</th><th>十位分布Top3</th><th>个位分布Top3</th></tr></thead><tbody>`;
+  (np.methods||[]).forEach(m=>{
+    const cands=(m.candidates||[]).slice(0,10).join(' ');
+    const topd=(arr)=>{ if(!arr) return '-'; return [...arr.keys()].sort((a,b)=>arr[b]-arr[a]).slice(0,3).map(i=>i+':'+(arr[i]*100).toFixed(1)+'%').join(' '); };
+    const d=m.distribution;
+    h+=`<tr><td>${m.method_id}</td><td class="mono">${cands}</td><td>${d?topd(d[0]):'-'}</td><td>${d?topd(d[1]):'-'}</td><td>${d?topd(d[2]):'-'}</td></tr>`;
+  });
+  h+='</tbody></table>';
+
+  // NEW: 历史预测 VS 实开
+  const hc=mm.historical_compare||{};
+  h+=`<h3>历史预测 VS 实开：期号 ${hc.period||'-'}（${hc.date||'未知日期'}）实开 <b>${hc.actual??'-'}</b>（偏移 ${mm.history_offset??'-'} 期，严格时间前训练）</h3>`;
+  h+=`<table><thead><tr><th>方法</th><th>Top候选(前10)</th><th>精确命中</th><th>位命中(0-3)</th><th>数字偏差</th><th>log-loss</th></tr></thead><tbody>`;
+  (hc.methods||[]).forEach(m=>{
+    const met=m.metrics||{};
+    const cands=(m.candidates||[]).slice(0,10).join(' ');
+    h+=`<tr><td>${m.method_id}</td><td class="mono">${cands}</td><td>${met.exact_hit?'✓':'✗'}</td><td>${met.position_top1_hits??'-'}</td><td>${met.digit_divergence??'-'}</td><td>${met.log_loss!=null?met.log_loss.toFixed(3):'-'}</td></tr>`;
+  });
+  h+='</tbody></table>';
+
+  h+=`<div class="note">${wa.disclaimer||''} 下期预测为盲评用途，开奖前不可知，不构成任何投注建议。</div>`;
+  return h;
+}
+function svgLine(series, opts){
+  const w=680,h=160,pad=24; const n=series.length; if(!n) return '';
+  const mn=opts.min!=null?opts.min:Math.min(...series), mx=opts.max!=null?opts.max:Math.max(...series);
+  const range=(mx-mn)||1;
+  const x=i=> pad + (n===1?0:(i/(n-1))*(w-2*pad));
+  const y=v=> h-pad - ((v-mn)/range)*(h-2*pad);
+  const pts=series.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  let s=`<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">`;
+  s+=`<line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="#2a3343"/>`;
+  s+=`<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" stroke="#2a3343"/>`;
+  if(opts.mean!=null){
+    const my=y(opts.mean);
+    s+=`<line x1="${pad}" y1="${my.toFixed(1)}" x2="${w-pad}" y2="${my.toFixed(1)}" stroke="${opts.color}" stroke-dasharray="4 4" opacity="0.5"/>`;
+    s+=`<text x="${w-pad}" y="${(my-4).toFixed(1)}" fill="${opts.color}" font-size="10" text-anchor="end">均值 ${opts.mean.toFixed(1)}</text>`;
+  }
+  s+=`<polyline points="${pts}" fill="none" stroke="${opts.color}" stroke-width="2"/>`;
+  series.forEach((v,i)=>{ s+=`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2" fill="${opts.color}"/>`; });
+  s+=`<text x="${pad}" y="${pad-8}" fill="#93a1b1" font-size="10">${mx}</text><text x="${pad}" y="${h-pad+14}" fill="#93a1b1" font-size="10">${mn}</text>`;
+  s+='</svg>';
+  return s;
+}
+function svgBars(obj, opts){
+  const keys=Object.keys(obj).map(Number).sort((a,b)=>a-b);
+  const w=680,h=160,pad=20;
+  const maxv=Math.max(1,...keys.map(k=>obj[String(k)]));
+  const gap=(w-2*pad)/keys.length;
+  const bw=Math.max(3,gap-2);
+  let s=`<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">`;
+  s+=`<line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="#2a3343"/>`;
+  keys.forEach((k,i)=>{
+    const v=obj[String(k)]||0;
+    const bh=(v/maxv)*(h-2*pad);
+    const x=pad+i*gap+1;
+    const y=h-pad-bh;
+    s+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw}" height="${bh.toFixed(1)}" fill="${opts.color}" opacity="0.85"/>`;
+    if(v>0 && i%2===0) s+=`<text x="${(x+bw/2).toFixed(1)}" y="${h-pad+12}" fill="#93a1b1" font-size="9" text-anchor="middle">${k}</text>`;
+    if(v>0 && bh>14) s+=`<text x="${(x+bw/2).toFixed(1)}" y="${(y+10).toFixed(1)}" fill="#e6edf3" font-size="9" text-anchor="middle">${v}</text>`;
+  });
+  s+='</svg>';
+  return s;
+}
+function catBars(obj, title){
+  if(!obj) return '';
+  const entries=Object.entries(obj).sort((a,b)=>b[1]-a[1]);
+  const maxv=Math.max(1,...entries.map(e=>e[1]));
+  let s=`<div class="card"><h4>${title}</h4>`;
+  entries.forEach(([k,v])=>{
+    const pct=(v/maxv*100).toFixed(0);
+    s+=`<div class="barline"><span class="blabel">${k}</span><span class="btrack"><span class="bfill" style="width:${pct}%"></span></span><span class="bval">${v}</span></div>`;
+  });
+  s+='</div>';
+  return s;
+}
+function historyHtml(){
+  const hs=STATE.history_stats;
+  if(!hs)return '<div class="note">尚未运行「历史与统计」。在“功能”页运行 history_stats 生成报告。</div>';
+  let h=`<div class="note">生成 ${hs.generated_at} · 配置 ${JSON.stringify(hs.config)} · 回看 ${hs.count} 期开奖（只读权威库）</div>`;
+
+  const recs=(hs.records||[]).slice().reverse();
+  h+=`<h3>历史开奖原始表（近 ${hs.count} 期，最新在上）</h3>`;
+  h+=`<div class="scrolltable"><table><thead><tr><th>期号</th><th>日期</th><th>开奖号码</th><th>和值</th><th>跨度</th><th>奇偶</th><th>大小</th><th>类型</th></tr></thead><tbody>`;
+  recs.forEach(r=>{
+    const tc=r.type==='豹子'?'bz':(r.type==='组三'?'z3':'z6');
+    h+=`<tr><td class="mono">${r.period}</td><td>${r.date||'-'}</td><td class="mono">${r.number}</td><td>${r.sum}</td><td>${r.span}</td><td>${r.parity_pattern}</td><td>${r.size_pattern}</td><td><span class="badge type ${tc}">${r.type}</span></td></tr>`;
+  });
+  h+='</tbody></table></div>';
+
+  const sums=(hs.records||[]).map(r=>r.sum);
+  const mean=sums.reduce((a,b)=>a+b,0)/Math.max(1,sums.length);
+  h+=`<h3>和值走势（近 ${hs.count} 期）</h3>`;
+  h+=svgLine(sums,{min:0,max:27,mean:mean,color:'#4ea1ff'});
+  h+=`<h3>和值分布（0–27）</h3>`;
+  h+=svgBars(hs.sum_distribution,{color:'#4ea1ff'});
+  h+=`<h3>跨度分布（0–9）</h3>`;
+  h+=svgBars(hs.span_distribution,{color:'#3fb950'});
+
+  const posName=['百位','十位','个位'];
+  h+=`<h3>各位数字频率 &amp; 遗漏（回看 ${hs.count} 期频率 / 全历史遗漏）</h3>`;
+  h+=`<div class="freqgrid">`;
+  for(let p=0;p<3;p++){
+    const freq=hs.position_frequency[String(p)]||{};
+    const omit=hs.position_omission[String(p)]||{};
+    h+=`<div class="card"><h4>${posName[p]}</h4><table class="freq"><thead><tr><th>数字</th><th>频率</th><th>遗漏</th></tr></thead><tbody>`;
+    for(let d=0;d<10;d++){
+      const f=freq[String(d)]||0; const o=omit[String(d)];
+      const cls=o>=30?'omit-cold':(o<=2?'omit-hot':'');
+      h+=`<tr><td class="mono">${d}</td><td>${f}</td><td class="${cls}">${o}</td></tr>`;
+    }
+    h+='</tbody></table></div>';
+  }
+  h+='</div>';
+
+  const ps=hs.parity_size||{};
+  h+=`<h3>奇偶 / 大小 / 质合 占比（近 ${hs.count} 期）</h3>`;
+  h+=`<div class="catgrid">${catBars(ps.parity_ratio,'奇偶比')}${catBars(ps.size_pattern,'大小')}${catBars(ps.zhihe_pattern,'质合')}</div>`;
+  h+=`<div class="note">质合总量：质 ${ps.zhi_total??'-'} · 合 ${ps.he_total??'-'}</div>`;
+
+  const ts=hs.type_stats||{};
+  const tt=Object.entries(ts).map(([k,v])=>`${k}:${v}`).join(' · ');
+  h+=`<h3>组选类型占比（近 ${hs.count} 期）</h3><div class="note">${tt}</div>`;
+
+  const hc=hs.hot_cold||{};
+  h+=`<h3>冷热号（近 ${hc.n??0} 期，期望 ${hc.expected??'-'} 次/数字）</h3><div class="hcgrid">`;
+  (hc.ranked||[]).forEach(r=>{
+    const arrow=r.cls==='hot'?'▲':(r.cls==='cold'?'▼':'');
+    h+=`<span class="hc ${r.cls}">${r.digit}:${r.count}${arrow}</span>`;
+  });
+  h+='</div>';
+
+  const pr=hs.prediction_rolling||{};
+  h+=`<h3>历史预测滚动对照（近 ${pr.periods?pr.periods.length:0} 期 × ${pr.methods?pr.methods.length:0} 方法，严格时间前向）</h3>`;
+  if(pr.periods&&pr.periods.length){
+    h+=`<div class="scrolltable"><table><thead><tr><th>方法 \\ 期号</th>${pr.periods.map(p=>`<th class="hcell mono">${p.period}<br><small>实开 ${p.actual}</small></th>`).join('')}</tr></thead><tbody>`;
+    (pr.methods||[]).forEach(m=>{
+      h+=`<tr><td>${m.method_id}</td>`;
+      (m.cells||[]).forEach(c=>{
+        h+=`<td class="${c.exact_hit?'hit-ok':'hit-no'} mono" title="位命中 ${c.pos_hits}">${c.top1}${c.exact_hit?' ✓':' ·'}</td>`;
+      });
+      h+='</tr>';
+    });
+    h+='</tbody></table></div>';
+  }
+
+  h+=`<div class="note">${hs.disclaimer||''}</div>`;
   return h;
 }
 function backtestHtml(){

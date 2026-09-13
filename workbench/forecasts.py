@@ -195,6 +195,22 @@ def actual_for(db: Path, period: str) -> str | None:
     return number if len(number) == 3 else None
 
 
+def draw_date(db: Path, period: str) -> str | None:
+    """Return the draw date string for a period (last field of values_json), or None."""
+    try:
+        with sqlite3.connect(str(db)) as c:
+            row = c.execute("SELECT values_json FROM draws WHERE period=?", (period,)).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    try:
+        fields = json.loads(row[0])
+        return fields[-1] if fields else None
+    except Exception:
+        return None
+
+
 def compare_period(db: Path, period: str, top_k: int = 10, alpha: float = 0.1, use_cache: bool = True) -> dict:
     """Compare every method's forecast for `period` against the actual draw."""
     cached = get_forecasts(period) if use_cache else []
@@ -202,6 +218,7 @@ def compare_period(db: Path, period: str, top_k: int = 10, alpha: float = 0.1, u
         cached = generate_for_period(db, period, top_k, alpha)
         store_forecasts(period, cached)
     actual = actual_for(db, period)
+    d = draw_date(db, period)
     methods = []
     for f in cached:
         metrics = evaluate(actual, f["candidates"], f["distribution"]) if actual else None
@@ -212,7 +229,7 @@ def compare_period(db: Path, period: str, top_k: int = 10, alpha: float = 0.1, u
                 "metrics": metrics,
             }
         )
-    return {"period": period, "actual": actual, "methods": methods}
+    return {"period": period, "actual": actual, "date": d, "methods": methods}
 
 
 def compare_window(db: Path, last_n: int = 12, top_k: int = 10, alpha: float = 0.1) -> dict:
@@ -263,17 +280,58 @@ def compare_window(db: Path, last_n: int = 12, top_k: int = 10, alpha: float = 0
     }
 
 
-def build_report(db: Path, last_n: int = 12, top_k: int = 10, alpha: float = 0.1) -> dict:
+def next_period(db: Path, top_k: int = 10, alpha: float = 0.1) -> dict:
+    """Forecast for the NEXT (not-yet-drawn) period from all strictly-earlier data.
+
+    Leakage-free: trained only on periods before the latest known draw. There is
+    no actual result yet, so this is a pure multi-method forecast for blind review.
+    """
+    nums = load_numbers(db)
+    if not nums:
+        return {"period": None, "trained_on_periods_up_to": None, "methods": []}
+    last_period = nums[-1][0]
+    next_p = str(int(last_period) + 1)
+    forecasts = generate_for_period(db, next_p, top_k, alpha)
+    return {
+        "period": next_p,
+        "trained_on_periods_up_to": last_period,
+        "trained_on_date": draw_date(db, last_period),
+        "methods": [
+            {
+                "method_id": f["method_id"],
+                "candidates": (f["candidates"] or [])[:top_k],
+                "distribution": f["distribution"],
+            }
+            for f in forecasts
+        ],
+    }
+
+
+def historical_compare(db: Path, period: str, top_k: int = 10, alpha: float = 0.1, use_cache: bool = False) -> dict:
+    """A past period's strictly-time-forward forecast vs its actual draw."""
+    return compare_period(db, period, top_k, alpha, use_cache=use_cache)
+
+
+def build_report(db: Path, last_n: int = 12, top_k: int = 10, alpha: float = 0.1, history_offset: int = 2) -> dict:
     from datetime import datetime, timezone
 
     nums = load_numbers(db)
     last_period = nums[-1][0] if nums else None
     last_actual = nums[-1][1] if nums else None
+    hist_period = None
+    if last_period and history_offset > 0:
+        try:
+            hist_period = str(int(last_period) - history_offset)
+        except Exception:
+            hist_period = None
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "config": {"last_n": last_n, "top_k": top_k, "alpha": alpha},
+        "config": {"last_n": last_n, "top_k": top_k, "alpha": alpha, "history_offset": history_offset},
         "last_period": last_period,
         "actual_last": last_actual,
-        "last_period_compare": compare_period(db, last_period, top_k, alpha) if last_period else None,
+        "last_period_compare": compare_period(db, last_period, top_k, alpha, use_cache=False) if last_period else None,
         "window_aggregate": compare_window(db, last_n, top_k, alpha),
+        "next_period": next_period(db, top_k, alpha),
+        "history_offset": history_offset,
+        "historical_compare": historical_compare(db, hist_period, top_k, alpha) if hist_period else None,
     }

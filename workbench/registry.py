@@ -285,6 +285,23 @@ FUNCTIONS: list[dict] = [
             {"name": "回看期数 last_n", "flag": "--last-n", "type": "int", "default": 12, "help": "严格时间顺序窗口期数"},
             {"name": "候选数 top_k", "flag": "--top-k", "type": "int", "default": 10, "help": "每方法候选个数"},
             {"name": "分布平滑 alpha", "flag": "--alpha", "type": "float", "default": 0.1, "help": "分布平滑系数"},
+            {"name": "历史对照偏移 history_offset", "flag": "--history-offset", "type": "int", "default": 2, "help": "历史预测对照期 = 最新期 - 此偏移（默认2即最新前两期，如2026243）"},
+        ],
+    },
+    {
+        "id": "history_stats",
+        "title": "历史与统计 history_stats",
+        "script": "__history_stats__",
+        "args": [],
+        "risk": "L1",
+        "category": "对比",
+        "desc": "人类视觉管理：历史开奖原始表、和值/跨度走势、官网式多维统计（各位频率+遗漏/奇偶大小质合/组选类型/冷热号）、历史预测滚动对照。只读权威库，不写不改。",
+        "confirm": False,
+        "params": [
+            {"name": "回看期数 window", "flag": "--window", "type": "int", "default": 60, "help": "历史开奖表与走势回看期数"},
+            {"name": "预测对照期数 pred_window", "flag": "--pred-window", "type": "int", "default": 20, "help": "历史预测滚动对照期数（严格时间前向）"},
+            {"name": "候选数 top_k", "flag": "--top-k", "type": "int", "default": 10, "help": "各方法候选个数"},
+            {"name": "分布平滑 alpha", "flag": "--alpha", "type": "float", "default": 0.1, "help": "分布平滑系数"},
         ],
     },
 ]

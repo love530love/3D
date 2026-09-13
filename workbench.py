@@ -57,7 +57,25 @@ def cmd_multi_method(args: argparse.Namespace) -> int:
         extra += ["--top-k", str(args.top_k)]
     if args.alpha is not None:
         extra += ["--alpha", str(args.alpha)]
+    if args.history_offset is not None:
+        extra += ["--history-offset", str(args.history_offset)]
     res = engine.run_function("multi_method", extra_args=extra)
+    for line in res["log"]:
+        print(line)
+    return res["returncode"]
+
+
+def cmd_history_stats(args: argparse.Namespace) -> int:
+    extra = []
+    if args.window is not None:
+        extra += ["--window", str(args.window)]
+    if args.pred_window is not None:
+        extra += ["--pred-window", str(args.pred_window)]
+    if args.top_k is not None:
+        extra += ["--top-k", str(args.top_k)]
+    if args.alpha is not None:
+        extra += ["--alpha", str(args.alpha)]
+    res = engine.run_function("history_stats", extra_args=extra)
     for line in res["log"]:
         print(line)
     return res["returncode"]
@@ -143,7 +161,14 @@ def build_parser() -> argparse.ArgumentParser:
     pm.add_argument("--last-n", type=int, default=12, help="回看期数")
     pm.add_argument("--top-k", type=int, default=10, help="候选数")
     pm.add_argument("--alpha", type=float, default=0.1, help="分布平滑系数")
+    pm.add_argument("--history-offset", type=int, default=2, help="历史对照期偏移（最新期 - 此值）")
     pm.set_defaults(func=cmd_multi_method)
+    ph = sub.add_parser("history_stats", help="历史与统计：历史开奖表/和值跨度走势/官网式多维统计/历史预测滚动对照")
+    ph.add_argument("--window", type=int, default=60, help="回看期数（历史开奖表与走势）")
+    ph.add_argument("--pred-window", type=int, default=20, help="历史预测滚动对照期数")
+    ph.add_argument("--top-k", type=int, default=10, help="候选数")
+    ph.add_argument("--alpha", type=float, default=0.1, help="分布平滑系数")
+    ph.set_defaults(func=cmd_history_stats)
     sub.add_parser("decisions", help="列出决策记录").set_defaults(func=cmd_decisions)
     sub.add_parser("state", help="打印状态 JSON").set_defaults(func=cmd_state)
     sub.add_parser("print", help="打印决策摘要").set_defaults(func=cmd_print)

@@ -64,6 +64,8 @@ def run_function(func_id: str, extra_args=None, on_line=None) -> dict:
         return _run_compare_pending(on_line)
     if func["script"] == "__multi_method__":
         return _run_multi_method(extra_args, on_line)
+    if func["script"] == "__history_stats__":
+        return _run_history_stats(extra_args, on_line)
 
     script_path = ROOT / func["script"]
     if not script_path.exists():
@@ -137,6 +139,7 @@ def _run_multi_method(extra_args=None, on_line=None) -> dict:
     ap.add_argument("--last-n", type=int, default=12)
     ap.add_argument("--top-k", type=int, default=10)
     ap.add_argument("--alpha", type=float, default=0.1)
+    ap.add_argument("--history-offset", type=int, default=2)
     try:
         a = ap.parse_args(extra_args or [])
     except SystemExit:
@@ -144,7 +147,7 @@ def _run_multi_method(extra_args=None, on_line=None) -> dict:
 
     log: list[str] = []
     try:
-        report = fm.build_report(DB, last_n=a.last_n, top_k=a.top_k, alpha=a.alpha)
+        report = fm.build_report(DB, last_n=a.last_n, top_k=a.top_k, alpha=a.alpha, history_offset=a.history_offset)
     except Exception as exc:  # pragma: no cover - defensive
         return {"returncode": 1, "log": [f"生成多方法对比失败: {exc}"], "produced": []}
 
@@ -162,6 +165,10 @@ def _run_multi_method(extra_args=None, on_line=None) -> dict:
             f"  {m['method_id']:<28} top1={top1} 精确={met.get('exact_hit')} "
             f"位命中={met.get('position_top1_hits')} 偏差={met.get('digit_divergence')}"
         )
+    np = report.get("next_period") or {}
+    log.append(f"下期预测 期号={np.get('period')}（基于截至 {np.get('trained_on_periods_up_to')}）共 {len(np.get('methods', []))} 种方法")
+    hc = report.get("historical_compare") or {}
+    log.append(f"历史对照 期号={hc.get('period')} 实开={hc.get('actual')}（偏移 {report.get('history_offset')} 期）")
     wa = report.get("window_aggregate") or {}
     log.append(f"近 {wa.get('window_size')} 期严格时间顺序聚合:")
     for mid, s in (wa.get("per_method") or {}).items():
@@ -176,6 +183,54 @@ def _run_multi_method(extra_args=None, on_line=None) -> dict:
         for line in log:
             on_line(line)
     return {"returncode": 0, "log": log, "produced": ["multi-method-latest.json"]}
+
+
+def _run_history_stats(extra_args=None, on_line=None) -> dict:
+    """Generate the human-facing historical & official-style statistics report."""
+    import argparse
+
+    from . import history_stats as hs
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--window", type=int, default=60)
+    ap.add_argument("--pred-window", type=int, default=20)
+    ap.add_argument("--top-k", type=int, default=10)
+    ap.add_argument("--alpha", type=float, default=0.1)
+    try:
+        a = ap.parse_args(extra_args or [])
+    except SystemExit:
+        return {"returncode": 2, "log": ["参数解析失败（history_stats）。"], "produced": []}
+
+    log: list[str] = []
+    try:
+        report = hs.build_report(
+            DB, window=a.window, pred_window=a.pred_window, top_k=a.top_k, alpha=a.alpha
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        return {"returncode": 1, "log": [f"生成历史与统计失败: {exc}"], "produced": []}
+
+    if report.get("error"):
+        return {"returncode": 1, "log": [f"无数据: {report.get('error')}"], "produced": []}
+
+    out = REPORTS / "history-stats-latest.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    log.append(f"Wrote {out}")
+    log.append(f"配置: {report['config']} · 回看 {report['count']} 期")
+    log.append(
+        f"和值分布样例: { {k: v for k, v in list(report['sum_distribution'].items()) if v} }"
+    )
+    log.append(f"组选类型: {report['type_stats']}")
+    log.append(
+        f"冷热(近{report['hot_cold']['n']}期, 期望{report['hot_cold']['expected']}): "
+        + " ".join(f"{r['digit']}:{r['count']}{'▲' if r['cls']=='hot' else ('▼' if r['cls']=='cold' else '')}" for r in report['hot_cold']['ranked'])
+    )
+    pr = report["prediction_rolling"]
+    log.append(f"历史预测滚动对照: {len(pr['periods'])} 期 × {len(pr['methods'])} 方法")
+    if on_line:
+        for line in log:
+            on_line(line)
+    return {"returncode": 0, "log": log, "produced": ["history-stats-latest.json"]}
 
 
 def load_report(name: str):
@@ -399,4 +454,5 @@ def collect_state() -> dict:
         "versions": git_versions(),
         "backtest": _trim_backtest(load_report("backtest-latest.json")),
         "multi_method": load_report("multi-method-latest.json"),
+        "history_stats": load_report("history-stats-latest.json"),
     }
