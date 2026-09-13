@@ -304,6 +304,21 @@ FUNCTIONS: list[dict] = [
             {"name": "分布平滑 alpha", "flag": "--alpha", "type": "float", "default": 0.1, "help": "分布平滑系数"},
         ],
     },
+    {
+        "id": "predictive_arena",
+        "title": "模型竞技场 predictive_arena",
+        "script": "__predictive_arena__",
+        "args": [],
+        "risk": "L1",
+        "category": "对比",
+        "desc": "诚实回测擂台：多家族候选方案（含联合整体/和值条件/修偏均值回归/ML逻辑回归教学）严格时间前向预测，逐一与均匀随机基线做精确命中率+校准log-loss的二项分布显著性检验，置顶诚实层结论。只读权威库。",
+        "confirm": False,
+        "params": [
+            {"name": "回看期数 last_n", "flag": "--last-n", "type": "int", "default": 200, "help": "严格时间顺序回测期数（越大统计功效越高；ML 方案较耗时）"},
+            {"name": "候选数 top_k", "flag": "--top-k", "type": "int", "default": 10, "help": "每方案候选个数"},
+            {"name": "分布平滑 alpha", "flag": "--alpha", "type": "float", "default": 0.1, "help": "分布平滑系数"},
+        ],
+    },
 ]
 
 

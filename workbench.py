@@ -85,6 +85,20 @@ def cmd_backtest(_: argparse.Namespace) -> int:
     return cmd_run_type("backtest")
 
 
+def cmd_predictive_arena(args: argparse.Namespace) -> int:
+    extra = []
+    if args.last_n is not None:
+        extra += ["--last-n", str(args.last_n)]
+    if args.top_k is not None:
+        extra += ["--top-k", str(args.top_k)]
+    if args.alpha is not None:
+        extra += ["--alpha", str(args.alpha)]
+    res = engine.run_function("predictive_arena", extra_args=extra)
+    for line in res["log"]:
+        print(line)
+    return res["returncode"]
+
+
 def cmd_run_type(fid: str) -> int:
     res = engine.run_function(fid)
     for line in res["log"]:
@@ -169,6 +183,11 @@ def build_parser() -> argparse.ArgumentParser:
     ph.add_argument("--top-k", type=int, default=10, help="候选数")
     ph.add_argument("--alpha", type=float, default=0.1, help="分布平滑系数")
     ph.set_defaults(func=cmd_history_stats)
+    pa = sub.add_parser("predictive_arena", help="模型竞技场：多家族方案的诚实回测擂台（vs 均匀随机基线）")
+    pa.add_argument("--last-n", type=int, default=200, help="回看期数")
+    pa.add_argument("--top-k", type=int, default=10, help="候选数")
+    pa.add_argument("--alpha", type=float, default=0.1, help="分布平滑系数")
+    pa.set_defaults(func=cmd_predictive_arena)
     sub.add_parser("decisions", help="列出决策记录").set_defaults(func=cmd_decisions)
     sub.add_parser("state", help="打印状态 JSON").set_defaults(func=cmd_state)
     sub.add_parser("print", help="打印决策摘要").set_defaults(func=cmd_print)

@@ -94,6 +94,17 @@ th{color:var(--muted);font-weight:600;background:rgba(255,255,255,.02)}
 .hit-ok{color:var(--ok);font-weight:600}
 .hit-no{color:var(--muted)}
 .hcell small{color:var(--muted);font-weight:400}
+.arena-banner{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:14px}
+.arena-banner .ab{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:12px 14px}
+.arena-banner .ab .l{color:var(--muted);font-size:11px}
+.arena-banner .ab .v{font-size:17px;font-weight:600;margin-top:4px}
+.arena-banner .ab.ok .v{color:var(--ok)}
+.arena-banner .ab.bad .v{color:var(--bad)}
+.arena-banner .ab.warn .v{color:var(--warn)}
+.verdict-pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.verdict-pill.nd{background:rgba(139,152,168,.18);color:var(--l0)}
+.verdict-pill.better{background:rgba(63,185,80,.18);color:var(--ok)}
+.verdict-pill.worse{background:rgba(248,81,73,.18);color:var(--bad)}
 @media print{
   .params{display:none!important}
   .scrolltable{max-height:none!important;overflow:visible!important}
@@ -140,7 +151,7 @@ function renderKpis(){
   box.innerHTML=items.map(([l,v])=>`<div class="kpi"><div class="label">${l}</div><div class="value">${v??'—'}</div></div>`).join('');
 }
 function renderTabs(){
-  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
+  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['arena','模型竞技场'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
   document.getElementById('tabs').innerHTML=tabs.map(([id,t],i)=>`<button data-tab="${id}" class="${i===0?'active':''}">${t}</button>`).join('');
   document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('active'));
@@ -155,6 +166,7 @@ function showPanel(id){
   else if(id==='backtest')c.innerHTML=backtestHtml();
   else if(id==='multi_method')c.innerHTML=multiMethodHtml();
   else if(id==='history')c.innerHTML=historyHtml();
+  else if(id==='arena')c.innerHTML=arenaHtml();
   else if(id==='decisions')c.innerHTML=decisionsHtml();
   else if(id==='timeline')c.innerHTML=timelineHtml();
   else if(id==='reports')c.innerHTML=reportsHtml();
@@ -372,6 +384,48 @@ function historyHtml(){
   }
 
   h+=`<div class="note">${hs.disclaimer||''}</div>`;
+  return h;
+}
+function arenaHtml(){
+  const a=STATE.predictive_arena;
+  if(!a)return '<div class="note">尚未运行「模型竞技场」。在“功能”页运行 predictive_arena 生成诚实回测报告（含 ML 方案，约需 1 分钟）。</div>';
+  const hl=a.honesty_layer||{};
+  const th=a.theoretical||{};
+  let h=`<div class="note">生成 ${a.generated_at} · 配置 ${JSON.stringify(a.config)} · 测试 ${a.schemes_tested} 个方案（严格时间前向，仅用目标期之前数据）</div>`;
+
+  const fdrBetter=(hl.significantly_better_fdr||0)>0;
+  const rawBetter=(hl.significantly_better_raw||0)>0;
+  const worse=(hl.significantly_worse_raw||0)>0;
+  const cls=fdrBetter?'bad':(rawBetter?'warn':'ok');
+  h+=`<div class="arena-banner">
+    <div class="ab ${cls}"><div class="l">均匀随机基线命中率期望 (top_k)</div><div class="v">${hl.baseline_exact_rate_pct}%</div></div>
+    <div class="ab ${cls}"><div class="l">校准 log-loss 理论值</div><div class="v">${hl.theoretical_log_loss}</div></div>
+    <div class="ab ${cls}"><div class="l">与随机基线无显著差异</div><div class="v">${hl.no_significant_difference}/${a.schemes_tested}</div></div>
+    <div class="ab ${cls}"><div class="l">FDR校正后仍优于基线</div><div class="v">${hl.significantly_better_fdr}</div></div>
+  </div>`;
+  h+=`<div class="card" style="margin-bottom:14px"><h3>诚实层结论</h3><div class="desc">${hl.conclusion}</div></div>`;
+  h+=`<div class="card" style="margin:0 0 14px;border-left:3px solid var(--warn)"><h3>多重比较校正 (Benjamini-Hochberg, FDR=0.05)</h3><div class="desc">${hl.fdr_note||''}</div></div>`;
+
+  h+=`<h3>多元描述性对照：各方案 vs 均匀随机基线</h3>`;
+  h+=`<table><thead><tr><th>方案</th><th>结构族</th><th>精确命中率</th><th>基线期望</th><th>双侧 p</th><th>校准 log-loss</th><th>位命中(百/十/个)</th><th>判定</th></tr></thead><tbody>`;
+  (a.results||[]).forEach(r=>{
+    if(r.error)return;
+    const vt=r.verdict==='与随机基线无显著差异'?'nd':(r.verdict==='显著优于随机基线'?'better':'worse');
+    const ll=r.mean_log_loss!=null?r.mean_log_loss.toFixed(4):'-';
+    const p1=(r.mean_position_top1||[]).map(x=>(x*100).toFixed(1)+'%').join(' / ');
+    h+=`<tr><td class="mono">${r.name}</td><td>${r.family||'-'}</td><td>${(r.exact_rate*100).toFixed(2)}%</td><td>${(r.expected_exact_rate*100).toFixed(2)}%</td><td>${r.two_sided_p.toFixed(3)}</td><td>${ll}</td><td>${p1}</td><td><span class="verdict-pill ${vt}">${r.verdict}</span></td></tr>`;
+  });
+  h+='</tbody></table>';
+
+  const sw=a.improvement_sweep||{};
+  h+=`<h3>修偏改进尝试（假设可预测，再用回测检验）</h3>`;
+  h+=`<div class="note">${sw.note||''}</div>`;
+  const best=sw.best;
+  if(best){
+    h+=`<div class="note">遍历窗口/混合系数共 ${(sw.trials||[]).length} 组；最优：${best.name} · 命中率 ${(best.exact_rate*100).toFixed(2)}% · 基线期望 ${(sw.baseline_expected_rate*100).toFixed(2)}% · 判定 ${best.verdict} · 是否超越基线：<b>${sw.best_beats_baseline?'是':'否'}</b></div>`;
+  }
+
+  h+=`<div class="note">${a.disclaimer||''}</div>`;
   return h;
 }
 function backtestHtml(){

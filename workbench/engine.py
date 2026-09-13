@@ -66,6 +66,8 @@ def run_function(func_id: str, extra_args=None, on_line=None) -> dict:
         return _run_multi_method(extra_args, on_line)
     if func["script"] == "__history_stats__":
         return _run_history_stats(extra_args, on_line)
+    if func["script"] == "__predictive_arena__":
+        return _run_predictive_arena(extra_args, on_line)
 
     script_path = ROOT / func["script"]
     if not script_path.exists():
@@ -231,6 +233,48 @@ def _run_history_stats(extra_args=None, on_line=None) -> dict:
         for line in log:
             on_line(line)
     return {"returncode": 0, "log": log, "produced": ["history-stats-latest.json"]}
+
+
+def _run_predictive_arena(extra_args=None, on_line=None) -> dict:
+    """Generate the honest backtest arena report (模型竞技场)."""
+    import argparse
+
+    from . import predictive_eval as pa
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--last-n", type=int, default=200)
+    ap.add_argument("--top-k", type=int, default=10)
+    ap.add_argument("--alpha", type=float, default=0.1)
+    try:
+        a = ap.parse_args(extra_args or [])
+    except SystemExit:
+        return {"returncode": 2, "log": ["参数解析失败（predictive_arena）。"], "produced": []}
+
+    log: list[str] = []
+    try:
+        report = pa.run_arena(DB, last_n=a.last_n, top_k=a.top_k, alpha=a.alpha)
+    except Exception as exc:  # pragma: no cover - defensive
+        return {"returncode": 1, "log": [f"生成模型竞技场失败: {exc}"], "produced": []}
+
+    out = REPORTS / "predictive-arena-latest.json"
+    try:
+        pa.write_report(report, out)
+    except Exception as exc:
+        return {"returncode": 1, "log": [f"写入报告失败: {exc}"], "produced": []}
+    log.append(f"Wrote {out}")
+    hl = report.get("honesty_layer", {})
+    log.append(
+        f"测试 {report.get('schemes_tested')} 个方案 · 基线命中率期望 {hl.get('baseline_exact_rate_pct')}% · "
+        f"理论log-loss {hl.get('theoretical_log_loss')}"
+    )
+    log.append(hl.get("headline", ""))
+    log.append(f"结论: {hl.get('conclusion', '')}")
+    sw = report.get("improvement_sweep", {})
+    log.append(f"修偏改进尝试: {sw.get('note', '')}")
+    if on_line:
+        for line in log:
+            on_line(line)
+    return {"returncode": 0, "log": log, "produced": ["predictive-arena-latest.json"]}
 
 
 def load_report(name: str):
@@ -455,4 +499,5 @@ def collect_state() -> dict:
         "backtest": _trim_backtest(load_report("backtest-latest.json")),
         "multi_method": load_report("multi-method-latest.json"),
         "history_stats": load_report("history-stats-latest.json"),
+        "predictive_arena": load_report("predictive-arena-latest.json"),
     }
