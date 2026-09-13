@@ -54,6 +54,25 @@ from incentive_ledger import IncentiveLedger  # noqa: E402
 
 REPORTS = ROOT / "reports"
 
+ENGINE_STATE_PATH = REPORTS / "evolution-engine-state.json"
+
+
+def _load_engine_state(path: Path) -> dict:
+    """读取跨运行引擎状态（账本 + 近失种子 + 运行计数）。缺失/损坏时返回空状态。"""
+    if not path.exists():
+        return {"ledger": None, "near_miss_seeds": [], "runs": 0,
+                "last_generated_at": None, "last_score": None, "last_winner": None}
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:
+        return {"ledger": None, "near_miss_seeds": [], "runs": 0,
+                "last_generated_at": None, "last_score": None, "last_winner": None}
+
+
+def _save_engine_state(state: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
 FEAT_POOL = ["digit", "parity", "prime", "sum", "sum_tail", "span", "trend"]
 PRIMES = {2, 3, 5, 7}
 
@@ -111,8 +130,14 @@ def _build_filter(features: list[str], rng: random.Random):
 
 
 def _generate_candidates(base_claims: list[dict], prior_near_miss: list[dict],
-                         gen: int, rng: random.Random, new_per_gen: int, top_k: int) -> list[dict]:
-    """生成下一代候选主张：突变(base/近失) + 随机问题生成器 + 综合特征交叉。"""
+                         gen: int, rng: random.Random, new_per_gen: int, top_k: int,
+                         cross_seeds: list[dict] | None = None,
+                         run: int = 0) -> list[dict]:
+    """生成下一代候选主张：突变(base/近失) + 随机问题生成器 + 综合特征交叉。
+
+    `run` 为当前引擎运行序号，嵌入所有「非基桩」候选 id，确保跨运行 id 全局唯一，
+    避免不同次运行生成的（特征不同的）主张撞同一 id 而污染账本归因。
+    """
     new: list[dict] = []
     pool = list(base_claims) + list(prior_near_miss)
     rng.shuffle(pool)
@@ -122,7 +147,7 @@ def _generate_candidates(base_claims: list[dict], prior_near_miss: list[dict],
             break
         w = rng.choice([50, 100, 200, 400])
         new.append({
-            "id": f"{c['id']}__mut{gen}_{w}",
+            "id": f"{c['id']}__mut{run}_{gen}_{w}",
             "name": f"{c['name']}·突变(窗{w})",
             "family": c["family"] + "(突变)",
             "belief": c["belief"] + f"；突变窗口={w}",
@@ -134,7 +159,7 @@ def _generate_candidates(base_claims: list[dict], prior_near_miss: list[dict],
     while len(new) < new_per_gen:
         k = rng.randint(1, 3)
         feats = rng.sample(FEAT_POOL, k=k)
-        fid = f"synth_{gen}_{len(new)}"
+        fid = f"synth_{run}_{gen}_{len(new)}"
         filt = _build_filter(feats, rng)
         win = rng.choice([50, 100, 200])
         new.append({
@@ -145,7 +170,29 @@ def _generate_candidates(base_claims: list[dict], prior_near_miss: list[dict],
             "predict": (lambda f: (lambda train, tk: _filter_combine(train, f, tk)))(filt),
             "distribution": _dist_recent(win),
             "origin": ("comprehensive" if k >= 3 else "random"),
-            "parent_ids": [], "generation": gen,
+            "parent_ids": [], "generation": gen, "feats": feats,
+        })
+    # cross-run seeds: replay prior near-miss feature combos as fresh candidates
+    # (heuristic: re-derive the filter from the persisted feature spec; the exact
+    # predict closure is not serializable, so we regenerate it with a fresh window)
+    for cs in (cross_seeds or [])[:3]:
+        if len(new) >= new_per_gen:
+            break
+        feats = cs.get("feats")
+        if not feats:
+            continue
+        fid = f"xseed_{run}_{gen}_{len(new)}"
+        filt = _build_filter(feats, rng)
+        win = rng.choice([50, 100, 200])
+        new.append({
+            "id": fid,
+            "name": f"跨运行种子#{gen}.{len(new)}",
+            "family": "synthetic",
+            "belief": "跨运行复用近失特征组合：" + ",".join(feats),
+            "predict": (lambda f: (lambda train, tk: _filter_combine(train, f, tk)))(filt),
+            "distribution": _dist_recent(win),
+            "origin": ("comprehensive" if len(feats) >= 3 else "random"),
+            "parent_ids": [], "generation": gen, "feats": feats,
         })
     return new[:new_per_gen]
 
@@ -377,7 +424,7 @@ class EvolutionArena:
     def __init__(self, db: Path, last_n: int = 200, top_k: int = 10, alpha: float = 0.1,
                  fdr_q: float = 0.05, max_gens: int = 3, prize: float = 1040.0,
                  cost: float = 2.0, oos_n: int = 60, seed: int = 20260911,
-                 new_per_gen: int = 8, m0: int = 15):
+                 new_per_gen: int = 8, m0: int = 15, prev_state: dict | None = None):
         self.db = db
         self.last_n = last_n
         self.top_k = top_k
@@ -390,13 +437,20 @@ class EvolutionArena:
         self.seed = seed
         self.new_per_gen = new_per_gen
         self.m0 = m0
+        self.prev_state = prev_state or {}
         self.rng = random.Random(seed)
         self.nums = load_numbers(db)
         self.total = len(self.nums)
         # 训练评估窗口：严格排除 OOS 盲窗（不回看 OOS 数据）
         self.train_end = max(2, self.total - oos_n)
         self.train_start = max(1, self.train_end - last_n)
-        self.ledger = IncentiveLedger()
+        # 跨运行累积：账本与近失种子从上一运行继承
+        self.ledger = (IncentiveLedger.from_dict(self.prev_state["ledger"])
+                       if self.prev_state.get("ledger") else IncentiveLedger())
+        self.prev_near_miss_seeds = self.prev_state.get("near_miss_seeds", []) or []
+        self.engine_runs = (self.prev_state.get("runs", 0) or 0) + 1
+        self.prev_score = self.prev_state.get("last_score")
+        self.prev_winner = self.prev_state.get("last_winner")
         self.lineage: dict[str, dict] = {}
         self.claim_registry: dict[str, dict] = {}
         self.base_claims = _build_pro_claims()
@@ -411,6 +465,9 @@ class EvolutionArena:
 
     def _apply_ledger(self, c: dict, e: dict) -> None:
         cid = c["id"]
+        # 跨运行防双计：若该主张在上一次运行已定案，本次不再重复计分
+        if self.ledger.claims.get(cid, {}).get("status") not in (None, "pending"):
+            return
         if e["fdr_survivor"]:
             self.ledger.survive(cid, e["merit_w"])
             self.ledger.wrongful_reject(cid)   # 反方挑战了但最终存活 -> 反方误驳
@@ -426,7 +483,7 @@ class EvolutionArena:
         return {
             "claim_id": c["id"], "generation": c.get("generation", 0),
             "origin": c.get("origin", ""), "family": c.get("family", ""),
-            "parent_ids": c.get("parent_ids", []),
+            "parent_ids": c.get("parent_ids", []), "feats": c.get("feats"),
             "fitness": {
                 "n": e["n"],
                 "exact_rate": round(e["exact_rate"], 5),
@@ -501,7 +558,9 @@ class EvolutionArena:
             else:
                 candidates = _generate_candidates(
                     self.base_claims, prior_near_miss, gen, self.rng,
-                    self.new_per_gen, self.top_k)
+                    self.new_per_gen, self.top_k,
+                    cross_seeds=self.prev_near_miss_seeds,
+                    run=self.engine_runs)
             for c in candidates:
                 self._register(c)
                 self.ledger.submit(c["id"], c.get("origin", ""))
@@ -580,6 +639,16 @@ class EvolutionArena:
             "evidence": all_evidence,
             "directional": directional,
             "oos": oos,
+            "engine_state": {
+                "runs": self.engine_runs,
+                "prev_score": self.prev_score,
+                "prev_winner": self.prev_winner,
+                "near_miss_seeds_carried": len(self.prev_near_miss_seeds),
+                "near_miss_seeds_collected": len([
+                    l for l in self.lineage.values()
+                    if l.get("status") == "near_miss" and l.get("feats")
+                ]),
+            },
             "final_verdict": {
                 "winner": winner,
                 "winner_label": {
@@ -601,10 +670,32 @@ class EvolutionArena:
 def run_evolution(db: Path, last_n: int = 200, top_k: int = 10, alpha: float = 0.1,
                   fdr_q: float = 0.05, max_gens: int = 3, prize: float = 1040.0,
                   cost: float = 2.0, oos_n: int = 60, seed: int = 20260911,
-                  new_per_gen: int = 8, m0: int = 15) -> dict:
+                  new_per_gen: int = 8, m0: int = 15,
+                  persist: bool = True, state_path: Path = ENGINE_STATE_PATH,
+                  reset_state: bool = False) -> dict:
+    prev = {} if reset_state else _load_engine_state(state_path)
+    # 每次运行推进种子，使各代探索新领地；同时由上一次运行的近失种子回流驱动，
+    # 从而让"自进化"在运行之间真正累积学习，而非重复生成同一批候选。
+    prev_runs = (prev.get("runs", 0) or 0) if not reset_state else 0
+    eff_seed = seed + prev_runs * 7919
     arena = EvolutionArena(db, last_n, top_k, alpha, fdr_q, max_gens, prize, cost,
-                           oos_n, seed, new_per_gen, m0)
-    return arena.run()
+                           oos_n, eff_seed, new_per_gen, m0, prev_state=prev)
+    report = arena.run()
+    if persist:
+        state = {
+            "ledger": arena.ledger.to_dict(),
+            "near_miss_seeds": [
+                {"feats": l.get("feats"), "family": l.get("family")}
+                for l in arena.lineage.values()
+                if l.get("status") == "near_miss" and l.get("feats")
+            ],
+            "runs": arena.engine_runs,
+            "last_generated_at": report["generated_at"],
+            "last_score": report["directional"]["score"],
+            "last_winner": report["final_verdict"]["winner"],
+        }
+        _save_engine_state(state, state_path)
+    return report
 
 
 def write_report(report: dict, out: Path) -> None:
@@ -627,11 +718,16 @@ def main():
     ap.add_argument("--new-per-gen", type=int, default=8)
     ap.add_argument("--prize", type=float, default=1040.0)
     ap.add_argument("--cost", type=float, default=2.0)
+    ap.add_argument("--reset-state", action="store_true",
+                    help="丢弃跨运行累积状态（账本/近失种子），从零开始")
+    ap.add_argument("--no-persist", action="store_true",
+                    help="本次运行不写回引擎状态文件（不影响已有状态）")
     ap.add_argument("--out", default=str(REPORTS / "evolution-arena-latest.json"))
     a = ap.parse_args()
     report = run_evolution(
         Path(a.db), a.last_n, a.top_k, a.alpha, a.fdr_q, a.max_gens,
-        a.prize, a.cost, a.oos_n, 20260911, a.new_per_gen, 15)
+        a.prize, a.cost, a.oos_n, 20260911, a.new_per_gen, 15,
+        persist=not a.no_persist, reset_state=a.reset_state)
     write_report(report, Path(a.out))
     fv = report["final_verdict"]
     lg = report["ledger"]

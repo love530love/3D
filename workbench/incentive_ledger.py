@@ -174,6 +174,18 @@ class IncentiveLedger:
         self.claims = data.get("claims", {})
         self.badges = data.get("badges", self.badges)
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "IncentiveLedger":
+        """从持久化字典重建账本（用于跨运行累积）。"""
+        obj = cls()
+        obj.version = d.get("version", 1)
+        obj.round = d.get("round", 0)
+        obj.updated_at = d.get("updated_at", obj.updated_at)
+        obj.camps = d.get("camps", obj.camps)
+        obj.claims = d.get("claims", {})
+        obj.badges = d.get("badges", obj.badges)
+        return obj
+
     def to_dict(self) -> dict:
         return {
             "version": self.version,

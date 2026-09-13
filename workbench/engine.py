@@ -345,6 +345,8 @@ def _run_evolution_arena(extra_args=None, on_line=None) -> dict:
     ap.add_argument("--new-per-gen", type=int, default=8)
     ap.add_argument("--prize", type=float, default=1040.0)
     ap.add_argument("--cost", type=float, default=2.0)
+    ap.add_argument("--reset-state", action="store_true",
+                    help="从零开始，丢弃跨运行累积的账本/近失种子")
     try:
         a = ap.parse_args(extra_args or [])
     except SystemExit:
@@ -355,7 +357,7 @@ def _run_evolution_arena(extra_args=None, on_line=None) -> dict:
         report = ev.run_evolution(
             DB, last_n=a.last_n, top_k=a.top_k, alpha=a.alpha, fdr_q=a.fdr_q,
             max_gens=a.max_gens, prize=a.prize, cost=a.cost, oos_n=a.oos_n,
-            new_per_gen=a.new_per_gen,
+            new_per_gen=a.new_per_gen, reset_state=a.reset_state,
         )
     except Exception as exc:  # pragma: no cover - defensive
         return {"returncode": 1, "log": [f"生成自进化辩论擂台失败: {exc}"], "produced": []}

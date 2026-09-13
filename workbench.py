@@ -141,6 +141,8 @@ def cmd_evolution_arena(args: argparse.Namespace) -> int:
         extra += ["--prize", str(args.prize)]
     if args.cost is not None:
         extra += ["--cost", str(args.cost)]
+    if args.reset_state:
+        extra += ["--reset-state"]
     res = engine.run_function("evolution_arena", extra_args=extra)
     for line in res["log"]:
         print(line)
@@ -255,6 +257,7 @@ def build_parser() -> argparse.ArgumentParser:
     pe.add_argument("--new-per-gen", type=int, default=8, help="每代新主张数")
     pe.add_argument("--prize", type=float, default=1040.0, help="直选奖金")
     pe.add_argument("--cost", type=float, default=2.0, help="每注成本")
+    pe.add_argument("--reset-state", action="store_true", help="从零开始，丢弃跨运行累积状态")
     pe.set_defaults(func=cmd_evolution_arena)
     sub.add_parser("decisions", help="列出决策记录").set_defaults(func=cmd_decisions)
     sub.add_parser("state", help="打印状态 JSON").set_defaults(func=cmd_state)

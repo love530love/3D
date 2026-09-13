@@ -552,7 +552,9 @@ function evolutionHtml(){
   if(!r)return '<div class="note">尚未运行「自进化辩论擂台」。在“功能”页运行 evolution_arena 生成闭环报告（约需 1–2 分钟）。</div>';
   const cfg=r.config||{}, lg=r.ledger||{}, camps=(lg.camps)||{}, pro=camps.pro||{}, con=camps.con||{}, badges=lg.badges||{};
   const dir=r.directional||{}, fv=r.final_verdict||{}, ar=r.arsenal||{}, oos=r.oos||{};
-  let h=`<div class="note">生成 ${r.generated_at} · 配置 ${JSON.stringify(cfg)} · 累计主张 ${(r.lineage||[]).length} 项，反方武器库 ${ar.n_tests||0} 项随机性检验</div>`;
+  const es=r.engine_state||{};
+  const esNote = es.runs ? ` · 引擎累计运行 ${es.runs} 次（跨运行累积账本+近失种子）` : '';
+  let h=`<div class="note">生成 ${r.generated_at} · 配置 ${JSON.stringify(cfg)} · 累计主张 ${(r.lineage||[]).length} 项，反方武器库 ${ar.n_tests||0} 项随机性检验${esNote}</div>`;
   h+=evolutionLedgerHtml(pro,con,badges);
   h+=evolutionGauge(dir,fv);
   h+=evolutionConvergence(r.generations||[], cfg.oos_n);
