@@ -201,9 +201,46 @@ def _generate_candidates(base_claims: list[dict], prior_near_miss: list[dict],
     避免不同次运行生成的（特征不同的）主张撞同一 id 而污染账本归因。
     """
     new: list[dict] = []
+    base_by_id = {c["id"]: c for c in base_claims}
+    # 0) 跨运行近失回流（carry-over learning）——必须优先占位，否则后续填充会占满预算。
+    #    合成近失按 feats 重建；基桩近失(断点#1 修复)按 claim_id 找回原主张、用新窗口重验。
+    MAX_XSEED = 3
+    for cs in (cross_seeds or [])[:MAX_XSEED]:
+        if cs.get("kind") == "base" and cs.get("claim_id"):
+            bc = base_by_id.get(cs["claim_id"])
+            if not bc:
+                continue
+            w = rng.choice([50, 100, 200, 400])
+            new.append({
+                "id": f"{bc['id']}__xrep{run}_{gen}_{w}",
+                "name": f"{bc['name']}·跨运行重验(窗{w})",
+                "family": bc["family"] + "(跨运行重验)",
+                "belief": bc["belief"] + f"；跨运行重验窗口={w}",
+                "predict": bc["predict"],
+                "distribution": _dist_recent(w),
+                "origin": "cross_replay", "parent_ids": [bc["id"]],
+                "generation": gen,
+            })
+        else:
+            feats = cs.get("feats")
+            if not feats:
+                continue
+            fid = f"xseed_{run}_{gen}_{len(new)}"
+            filt = _build_filter(feats, rng)
+            win = rng.choice([50, 100, 200])
+            new.append({
+                "id": fid,
+                "name": f"跨运行种子#{gen}.{len(new)}",
+                "family": "synthetic",
+                "belief": "跨运行复用近失特征组合：" + ",".join(feats),
+                "predict": (lambda f: (lambda train, tk: _filter_combine(train, f, tk)))(filt),
+                "distribution": _dist_recent(win),
+                "origin": ("comprehensive" if len(feats) >= 3 else "random"),
+                "parent_ids": [], "generation": gen, "feats": feats,
+            })
+    # (a) mutate：对 base/近失 主张扰动回看窗口（复用其 predict，配新分布）
     pool = list(base_claims) + list(prior_near_miss)
     rng.shuffle(pool)
-    # (a) mutate：对 base/近失 主张扰动回看窗口（复用其 predict，配新分布）
     for c in pool:
         if len(new) >= new_per_gen // 2:
             break
@@ -232,28 +269,6 @@ def _generate_candidates(base_claims: list[dict], prior_near_miss: list[dict],
             "predict": (lambda f: (lambda train, tk: _filter_combine(train, f, tk)))(filt),
             "distribution": _dist_recent(win),
             "origin": ("comprehensive" if k >= 3 else "random"),
-            "parent_ids": [], "generation": gen, "feats": feats,
-        })
-    # cross-run seeds: replay prior near-miss feature combos as fresh candidates
-    # (heuristic: re-derive the filter from the persisted feature spec; the exact
-    # predict closure is not serializable, so we regenerate it with a fresh window)
-    for cs in (cross_seeds or [])[:3]:
-        if len(new) >= new_per_gen:
-            break
-        feats = cs.get("feats")
-        if not feats:
-            continue
-        fid = f"xseed_{run}_{gen}_{len(new)}"
-        filt = _build_filter(feats, rng)
-        win = rng.choice([50, 100, 200])
-        new.append({
-            "id": fid,
-            "name": f"跨运行种子#{gen}.{len(new)}",
-            "family": "synthetic",
-            "belief": "跨运行复用近失特征组合：" + ",".join(feats),
-            "predict": (lambda f: (lambda train, tk: _filter_combine(train, f, tk)))(filt),
-            "distribution": _dist_recent(win),
-            "origin": ("comprehensive" if len(feats) >= 3 else "random"),
             "parent_ids": [], "generation": gen, "feats": feats,
         })
     return new[:new_per_gen]
@@ -769,7 +784,7 @@ class EvolutionArena:
                 "near_miss_seeds_carried": len(self.prev_near_miss_seeds),
                 "near_miss_seeds_collected": len([
                     l for l in self.lineage.values()
-                    if l.get("status") == "near_miss" and l.get("feats")
+                    if l.get("status") == "near_miss"
                 ]),
             },
             "final_verdict": {
@@ -808,10 +823,15 @@ def run_evolution(db: Path, last_n: int = 200, top_k: int = 10, alpha: float = 0
     if persist:
         state = {
             "ledger": arena.ledger.to_dict(),
+            # 跨运行近失回流：统一 schem——合成近失带 feats，基桩/突变近失带 claim_id。
+            # 关键修复(断点#1)：此前只收 feats 非空的合成近失，导致基桩近失（如 consecutive
+            # p=0.052 反复出现却过不了 FDR 的弱信号）因 feats=None 被整体丢弃，跨运行无法回流重验。
             "near_miss_seeds": [
-                {"feats": l.get("feats"), "family": l.get("family")}
+                ({"kind": "base", "claim_id": l["claim_id"], "family": l.get("family")}
+                 if not l.get("feats")
+                 else {"kind": "synth", "feats": l["feats"], "family": l.get("family")})
                 for l in arena.lineage.values()
-                if l.get("status") == "near_miss" and l.get("feats")
+                if l.get("status") == "near_miss"
             ],
             "runs": arena.engine_runs,
             "last_generated_at": report["generated_at"],
