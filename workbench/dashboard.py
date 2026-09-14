@@ -181,7 +181,7 @@ function renderKpis(){
   box.innerHTML=items.map(([l,v])=>`<div class="kpi"><div class="label">${l}</div><div class="value">${v??'—'}</div></div>`).join('');
 }
 function renderTabs(){
-  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['arena','模型竞技场'],['debate','双阵营辩论擂台'],['evolution','进化擂台'],['interventions','干预治理'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
+  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['arena','模型竞技场'],['debate','双阵营辩论擂台'],['evolution','进化擂台'],['interventions','干预治理'],['external','外部耦合'],['near_miss','近失集成'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
   document.getElementById('tabs').innerHTML=tabs.map(([id,t],i)=>`<button data-tab="${id}" class="${i===0?'active':''}">${t}</button>`).join('');
   document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('active'));
@@ -200,6 +200,8 @@ function showPanel(id){
   else if(id==='debate')c.innerHTML=debateHtml();
   else if(id==='evolution')c.innerHTML=evolutionHtml();
   else if(id==='interventions')c.innerHTML=interventionsHtml();
+  else if(id==='external')c.innerHTML=externalCouplingHtml();
+  else if(id==='near_miss')c.innerHTML=nearMissEnsembleHtml();
   else if(id==='decisions')c.innerHTML=decisionsHtml();
   else if(id==='timeline')c.innerHTML=timelineHtml();
   else if(id==='reports')c.innerHTML=reportsHtml();
@@ -755,6 +757,61 @@ function interventionsHtml(){
     h+='<div class="note">暂无干预记录。</div>';
   }
   h+=`<div class="note">调用方式（服务端）：<code>python -m workbench.interventions param_change --by user --set top_k=12 --why "..."</code> · <code>add_factor --spec '{"kind":"pos_parity_eq","a":0,"b":1}'</code> · <code>override_verdict --claim &lt;id&gt; --why "..."</code> · <code>reset</code></div>`;
+  return h;
+}
+
+function externalCouplingHtml(){
+  const r=STATE.external_coupling;
+  if(!r)return '<div class="note">尚未运行外部/日历耦合探针。可在「功能」选项卡运行 external_coupling。</div>';
+  const tests=r.tests||[];
+  let h=`<div class="note">外部/跨域耦合探针（"蝴蝶效应 / 微妙联结"的域外延伸）：从每期开奖日期派生星期 / 周末 / 月份 / 月初月末，用卡方独立性 + 均值置换检验探测"外部状态→开奖"耦合，全部 BH-FDR(q=0.05) 校正。外部特征仅由已发生日期派生，构造上零泄漏。样本 n=${r.n} · 置换 M=${r.m_perm}。</div>`;
+  h+=`<div class="arena-banner">
+    <div class="ab"><div class="l">检验总数</div><div class="v">${tests.length}</div></div>
+    <div class="ab warn"><div class="l">原始 p&lt;0.05</div><div class="v">${r.n_rejected_raw||0}</div></div>
+    <div class="ab ok"><div class="l">FDR 存活</div><div class="v">${(r.fdr_survivors||[]).length}</div></div>
+  </div>`;
+  h+=`<div class="card" style="margin-bottom:14px"><h3>结论</h3><div class="desc">${r.summary||''}</div></div>`;
+  h+=`<h3>检验明细（按 p 升序）</h3><div class="scrolltable"><table class="evo-table"><thead><tr><th>检验</th><th>类型</th><th>统计量</th><th>p</th><th>FDR</th></tr></thead><tbody>`;
+  tests.slice().sort((a,b)=>a.p-b.p).forEach(t=>{
+    const fdr=t.fdr_survivor?'<span class="badge iv accept">存活</span>':'<span class="badge iv reject">否</span>';
+    h+=`<tr><td>${t.name}</td><td>${t.type||'-'}</td><td>${t.stat}</td><td>${t.p}</td><td>${fdr}</td></tr>`;
+  });
+  h+='</tbody></table></div>';
+  h+=`<div class="note">${r.disclaimer||''}</div>`;
+  return h;
+}
+
+function nearMissEnsembleHtml(){
+  const r=STATE.near_miss_ensemble;
+  if(!r)return '<div class="note">尚未运行近失集成/元学习。可在「功能」选项卡运行 near_miss_ensemble。</div>';
+  if(r.error)return `<div class="note">${r.error}</div>`;
+  const har=r.harvested||{};
+  const ens=r.ensembles||[];
+  const fdr=r.fdr_results||[];
+  const pf=r.portfolio||{};
+  let h=`<div class="note">近失假设集成 / 元学习：收割近失候选（基桩族 ${har.report||0} · 跨运行种子 ${har.state||0} · 确定性合成补足 ${har.synthetic||0} → 池大小 ${r.pool_size}），投票/堆叠集成，严格 OOS 盲窗评估 vs 均匀随机基线 + BH-FDR + Fisher/Stouffer 组合 p。</div>`;
+  h+=`<div class="arena-banner">
+    <div class="ab"><div class="l">池大小</div><div class="v">${r.pool_size}</div></div>
+    <div class="ab"><div class="l">Fisher p</div><div class="v">${pf.fisher_p??'-'}</div></div>
+    <div class="ab"><div class="l">Stouffer Z</div><div class="v">${pf.stouffer_z??'-'}</div></div>
+    <div class="ab ${(((r.best_ensemble_oos||{}).beats_baseline)?'ok':'warn')}"><div class="l">最佳 OOS 胜基线</div><div class="v">${(((r.best_ensemble_oos||{}).beats_baseline)?'是':'否')}</div></div>
+  </div>`;
+  h+=`<h3>集成器（min_votes 扫描，左训练窗参考 / 右 OOS 盲窗）</h3><div class="scrolltable"><table class="evo-table"><thead><tr><th>min_votes</th><th>训练命中率</th><th>训练 p</th><th>OOS 命中率</th><th>OOS p</th><th>OOS 95%CI</th></tr></thead><tbody>`;
+  ens.forEach(e=>{
+    const tr=e.train||{}, oo=e.oos||{};
+    const ci=(oo.ci95&&oo.ci95.length)?`[${oo.ci95[0].toFixed(4)}, ${oo.ci95[1].toFixed(4)}]`:'-';
+    h+=`<tr><td>${e.min_votes}/${e.m}</td><td>${tr.exact_rate!=null?tr.exact_rate.toFixed(4):'-'}</td><td>${tr.exceeds_baseline_p!=null?tr.exceeds_baseline_p.toFixed(3):'-'}</td><td>${oo.exact_rate!=null?oo.exact_rate.toFixed(4):'-'}</td><td>${oo.exceeds_baseline_p!=null?oo.exceeds_baseline_p.toFixed(3):'-'}</td><td class="mono">${ci}</td></tr>`;
+  });
+  h+='</tbody></table></div>';
+  h+=`<h3>FDR 校正（成员 + 集成器的 OOS 右尾 p）</h3><div class="scrolltable"><table class="evo-table"><thead><tr><th>对象</th><th>OOS 右尾 p</th><th>FDR 存活</th></tr></thead><tbody>`;
+  fdr.forEach(f=>{
+    const s=f.fdr_survivor?'<span class="badge iv accept">存活</span>':'<span class="badge iv reject">否</span>';
+    h+=`<tr><td>${f.name}</td><td>${f.oos_exceeds_p}</td><td>${s}</td></tr>`;
+  });
+  h+='</tbody></table></div>';
+  const fv=r.final_verdict||{};
+  h+=`<div class="card" style="margin-bottom:14px"><h3>裁决：${fv.winner_label||'-'}</h3><div class="desc">${fv.fdr_note||''}</div><div class="desc">${fv.conclusion||''}</div></div>`;
+  h+=`<div class="note">${r.disclaimer||''}</div>`;
   return h;
 }
 

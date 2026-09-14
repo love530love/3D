@@ -620,6 +620,8 @@ def collect_state() -> dict:
         "debate_arena": load_report("debate-arena-latest.json"),
         "evolution_arena": load_report("evolution-arena-latest.json"),
         "interventions": _interventions_state(),
+        "external_coupling": load_report("external-coupling-latest.json"),
+        "near_miss_ensemble": load_report("near-miss-ensemble-latest.json"),
     }
 
 
