@@ -139,6 +139,10 @@ def main() -> int:
     r.add_argument("--spec", required=True)
     r.add_argument("--approver", action="append", default=[], help="审批人角色 id（需 >=2）")
     r.add_argument("--notes", default="")
+    e = sub.add_parser("exec", help="驱动某角色执行器（gatekeeper/replicator/bias_auditor/ideator/archivist/orchestrator）")
+    e.add_argument("id", help="角色 id")
+    e.add_argument("--db", default=str(ROOT / "sd3d_history.sqlite3"))
+    e.add_argument("--jsonl", default=None, help="bias_auditor 的干预账本路径")
 
     args = ap.parse_args()
     if args.cmd == "list":
@@ -147,6 +151,10 @@ def main() -> int:
         print(json.dumps(describe(args.id), ensure_ascii=False, indent=2))
     elif args.cmd == "register":
         print(json.dumps(register(args.spec, args.approver, args.notes), ensure_ascii=False, indent=2))
+    elif args.cmd == "exec":
+        from workbench import roles_exec
+        result = roles_exec.run_role(args.id, db=args.db, jsonl_path=args.jsonl)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 

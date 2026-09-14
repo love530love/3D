@@ -181,6 +181,20 @@ def run_batch(label: str, mode: str = "standard", last_n: int = 200, top_k: int 
     except Exception as e:
         log.append(f"evolution arena: ERROR ({e})")
 
+    # 4.5) 诚实闸门（类人 gatekeeper）：离线自治时强制把关，防输出误导/变相投注建议。
+    #       不通过则记录 gate_passed=False，由编排/人工决定修订后再发布——绝不静默放行。
+    gate = {"passed": True, "issues": [], "honesty_score": 1.0}
+    try:
+        from . import roles_exec
+        evo_path = REPORTS / "evolution-arena-latest.json"
+        if evo_path.exists():
+            rep = json.loads(evo_path.read_text(encoding="utf-8"))
+            gate = roles_exec.gatekeeper_check(rep)
+            log.append(f"gatekeeper: passed={gate['passed']} honesty={gate['honesty_score']}" +
+                       ("" if gate["passed"] else f" ISSUES={gate['issues']}"))
+    except Exception as e:
+        log.append(f"gatekeeper: SKIP ({e})")
+
     # 5) 评估 & 深度反思
     post = fitness_from_state()
     regressed = allow_rollback and post["fitness"] < pre["fitness"]
@@ -197,6 +211,7 @@ def run_batch(label: str, mode: str = "standard", last_n: int = 200, top_k: int 
         "pre_fitness": pre["fitness"], "post_fitness": post["fitness"],
         "regressed": regressed, "rolled_back": regressed,
         "metrics": post,
+        "gate": gate,
         "thought": _reflect(mode, pre, post, regressed),
         "next_strategy": _adapt_strategy(mode, post, regressed),
     }
