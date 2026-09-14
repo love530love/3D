@@ -222,6 +222,20 @@ def run_batch(label: str, mode: str = "standard", last_n: int = 200, top_k: int 
     except Exception as e:
         log.append(f"replicator: SKIP ({e})")
 
+    # 4.7) 偏差审计团（bias_auditor）：扫治理账本(interventions.jsonl)抓 cherry-pick/阈值突变/
+    #       重置滥用（人类式怀疑精神的自动化）。离线自治时自动触发，使"人是不稳定因素"这一风险
+    #       持续被代码化审计，而非依赖某次人工复盘。
+    bias_audit = {"role": "bias_auditor", "n_records": 0, "status": "dormant",
+                  "flags": ["未运行"], "checked_at": None}
+    try:
+        from . import roles_exec
+        bias_audit = roles_exec.bias_audit() or bias_audit
+        n_flags = len([f for f in bias_audit.get("flags", []) if not f.startswith("未检出")])
+        log.append(f"bias_auditor: status={bias_audit.get('status')} records={bias_audit.get('n_records')} "
+                   f"flags={n_flags}")
+    except Exception as e:
+        log.append(f"bias_auditor: SKIP ({e})")
+
     # 5) 评估 & 深度反思
     post = fitness_from_state()
     regressed = allow_rollback and post["fitness"] < pre["fitness"]
@@ -240,6 +254,7 @@ def run_batch(label: str, mode: str = "standard", last_n: int = 200, top_k: int 
         "metrics": post,
         "gate": gate,
         "replication": replication,
+        "bias_audit": bias_audit,
         "thought": _reflect(mode, pre, post, regressed),
         "next_strategy": _adapt_strategy(mode, post, regressed),
     }
@@ -265,7 +280,27 @@ def run_batch(label: str, mode: str = "standard", last_n: int = 200, top_k: int 
         log.append(f"dashboard rebuild SKIP ({e})")
 
     log.append(f"batch {label} done; post_fitness={post['fitness']}; next_mode={entry['next_strategy']}")
-    return {"ok": True, "log": log, "entry": entry, "checkpoint": ck["id"]}
+
+    # 7.1) 离线自治自检总览（供每日自动化/任意 AI 读取，异常即显式告警）
+    gate_passed = gate.get("passed", True)
+    rep_rate = replication.get("replication_rate")
+    rep_flag = ("无存活主张需复现" if replication.get("n_survivors", 0) == 0
+                else f"复现率 {rep_rate*100:.0f}%（{replication.get('n_replicated')}/{replication.get('n_survivors')}）"
+                     + ("" if replication.get("n_fragile", 0) == 0 else f" · 脆弱 {replication.get('n_fragile')}"))
+    ba_status = bias_audit.get("status", "dormant")
+    ba_flags = [f for f in bias_audit.get("flags", []) if not f.startswith("未检出")]
+    summary = (
+        f"[自检总览] 诚实闸门={'✅通过' if gate_passed else '⚠️未通过 ' + str(gate.get('issues'))} | "
+        f"独立复现={rep_flag} | "
+        f"偏差审计={ba_status}" + ("" if not ba_flags else f" ⚠️{ba_flags}")
+    )
+    log.append(summary)
+    if not gate_passed or ba_status == "drift":
+        log.append("⚠️ 自检告警：请人工/编排复核 gate 或 bias_audit 结果后再对外发布结论。")
+
+    return {"ok": True, "log": log, "entry": entry, "checkpoint": ck["id"],
+            "selfcheck": {"gate_passed": gate_passed, "replication_rate": rep_rate,
+                          "bias_status": ba_status, "bias_flags": ba_flags}}
 
 
 def _reflect(mode: str, pre: dict, post: dict, regressed: bool) -> str:

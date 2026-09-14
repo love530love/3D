@@ -178,8 +178,16 @@ def bias_audit(jsonl_path: str | Path | None = None) -> dict:
     p = Path(jsonl_path) if jsonl_path else (REPORTS / "interventions.jsonl")
     flags: list[str] = []
     if not p.exists():
-        return {"role": "bias_auditor", "flags": ["无干预账本（治理层休眠，尚未被真实运行调用）"],
-                "checked_at": datetime.now().isoformat(timespec="seconds")}
+        result = {"role": "bias_auditor", "n_records": 0, "status": "dormant",
+                  "flags": ["无干预账本（治理层休眠，尚未被真实运行调用）"],
+                  "checked_at": datetime.now().isoformat(timespec="seconds")}
+        try:
+            REPORTS.mkdir(parents=True, exist_ok=True)
+            (REPORTS / "bias-audit-latest.json").write_text(
+                json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        return result
     recs = [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
     # ① cherry-pick：只接受"支持可预测"的干预、拒绝"不利"的
     overrides = [r for r in recs if r.get("action") == "override_verdict"]
@@ -202,12 +210,30 @@ def bias_audit(jsonl_path: str | Path | None = None) -> dict:
     resets = [r for r in recs if r.get("action") == "reset"]
     if len(resets) >= 3:
         flags.append(f"重置操作 {len(resets)} 次，检查是否'重置滥用'（逃避稳态检查）")
-    return {
+    if not flags:
+        flags.append("未检出明显偏差信号")
+    # 状态判定：dormant(治理层从未被调用) / clean(有账本但无偏差) / drift(检出偏差)
+    if len(recs) == 0:
+        status = "dormant"
+    elif len(flags) == 1 and flags[0].startswith("未检出"):
+        status = "clean"
+    else:
+        status = "drift"
+    result = {
         "role": "bias_auditor",
         "n_records": len(recs),
-        "flags": flags or ["未检出明显偏差信号"],
+        "status": status,
+        "flags": flags,
         "checked_at": datetime.now().isoformat(timespec="seconds"),
     }
+    # 落盘：与 replicator 等一致，供大屏 + 引擎状态读取
+    try:
+        REPORTS.mkdir(parents=True, exist_ok=True)
+        (REPORTS / "bias-audit-latest.json").write_text(
+            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+    return result
 
 
 # ===========================================================================

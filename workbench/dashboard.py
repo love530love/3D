@@ -576,6 +576,7 @@ function evolutionHtml(){
   h+=evolutionArsenal(ar);
   h+=evolutionOOS(oos,cfg);
   h+=evolutionReplication(STATE.replication);
+  h+=evolutionBiasAudit(STATE.bias_audit);
   h+=evolutionFinal(fv,cfg);
   return h;
 }
@@ -754,6 +755,23 @@ function evolutionReplication(rep){
     <div class="ab ${cls}" style="margin-bottom:8px"><div class="l">独立复现结论</div><div class="v" style="font-size:14px">${nS===0?'无存活主张需复现':(nF===0?'全部复现 ✓':'部分脆弱信号')}</div></div>
     <div class="desc">${body}</div>${detail}
     <div class="desc" style="margin-top:6px">宪章要求"存活信号须经 OOS + 独立复现"。该步骤在自驱动每批末尾自动执行，确保任何"疑似可预测"主张都被跨窗口独立验证，而非一次性巧合。</div>
+  </div>`;
+}
+function evolutionBiasAudit(rep){
+  const status = (rep && rep.status) || 'dormant';
+  if(!rep || !rep.role){
+    return `<div class="card" style="margin-bottom:14px"><h3>⑦ 偏差审计团（bias_auditor · 离线自治自动触发）</h3>
+      <div class="note">尚未运行偏差审计。自驱动批次会自动扫描 interventions 治理账本抓 cherry-pick/阈值突变/重置滥用；手动：<code>python -m workbench.roles exec --id bias_auditor</code>。</div></div>`;
+  }
+  const flagList = rep.flags || [];
+  const cls = status==='dormant' ? 'nd' : (status==='clean' ? 'ok' : 'warn');
+  const label = status==='dormant' ? '治理层休眠（无干预账本）' : (status==='clean' ? '未检出偏差信号 ✅' : '检出偏差信号 ⚠️');
+  let body = `扫描治理账本 ${rep.n_records} 条记录，状态=<b>${status}</b>。`;
+  let detail = flagList.length ? '<ul style="margin:6px 0 0 18px">'+flagList.map(f=>`<li>${f}</li>`).join('')+'</ul>' : '';
+  return `<div class="card" style="margin-bottom:14px"><h3>⑦ 偏差审计团（bias_auditor · 离线自治自动触发）</h3>
+    <div class="ab ${cls}" style="margin-bottom:8px"><div class="l">人类干预偏差审计</div><div class="v" style="font-size:14px">${label}</div></div>
+    <div class="desc">${body}</div>${detail}
+    <div class="desc" style="margin-top:6px">这是"人是不稳定因素"治理原则的代码化体现：把人类干预(调参/加因子/推翻裁决/重置)的确认偏误、cherry-pick、阈值漂移持续审计，而非依赖某次人工复盘。</div>
   </div>`;
 }
 function evolutionFinal(fv,cfg){

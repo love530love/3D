@@ -793,6 +793,7 @@ def collect_state() -> dict:
         "external_coupling": load_report("external-coupling-latest.json"),
         "near_miss_ensemble": load_report("near-miss-ensemble-latest.json"),
         "replication": load_report("replication-latest.json"),
+        "bias_audit": load_report("bias-audit-latest.json"),
         "roles": _roles_state(),
         "selfdrive": _selfdrive_state(),
     }
