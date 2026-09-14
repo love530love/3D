@@ -53,15 +53,25 @@ def gatekeeper_check(report: dict) -> dict:
                                     "随机过程", "受监管随机", "不宣称"]):
         issues.append("缺少免责声明（未说明随机过程/非投注建议）")
 
-    # 2) score 与裁决一致性：高分却判 random 易误导
+    # 2) score 与裁决一致性：score 是点估计，是否显著以 CI/Fisher p 为准。
+    #    仅当「方向显著为正(significant=True) 却判 random」才矛盾；
+    #    点估计偏高但 CI 含 0（不显著）时裁决 random 是诚实的，此时只要输出
+    #    显式标注了「点估计不显著、裁决依据 CI+OOS」即不算误导。
     score = d.get("score", 0.0) or 0.0
+    significant = bool(d.get("significant", False))
+    sig_note = d.get("significance_note", "") or ""
     verdict = fv.get("winner")
-    if score > 0.3 and verdict == "random":
+    if significant and verdict == "random":
         issues.append(
-            f"方向得分 score={score:.3f} 偏高却裁决 random，呈现可能误导"
-            f"（应在摘要标明'点估计不显著，裁决依据 CI+OOS 盲评'）")
+            f"方向得分显著为正(score={score:.3f}, CI 不含 0) 却裁决 random，呈现矛盾"
+            f"（{sig_note}）")
     if score < -0.3 and verdict == "weak_signal":
         issues.append("方向得分与裁决矛盾（score<0 却判 weak_signal）")
+    if (not significant) and verdict == "random" and not any(
+            k in text for k in ["点估计", "CI 不含 0", "CI 含 0", "不显著", "显著性"]):
+        issues.append(
+            "裁决 random 但输出未显式标注'点估计不显著、裁决依据 CI+OOS 盲评'，"
+            "易被误读为 score 与裁决自相矛盾")
 
     # 3) 变相投注建议扫描
     hit = [k for k in BET_KEYWORDS if k in concl or k in fdr_note]

@@ -434,6 +434,8 @@ def _directional_score(evidences: list[dict]) -> dict:
             "null_calibration": {"n_sim": 0, "score_null_mean": 0.0, "score_null_p95": 0.0,
                                  "score_null_p975": 0.0, "exceeds_null": False},
             "conclusion": "no_evidence_of_predictability", "max_effect_h": 0.0,
+            "significant": False,
+            "significance_note": "无证据可计算方向得分；默认不可区分于随机。",
         }
     Z = sum(zs) / math.sqrt(m)            # Stouffer Z, ~N(0,1) under H0
     score = math.tanh(Z)
@@ -487,6 +489,15 @@ def _directional_score(evidences: list[dict]) -> dict:
                               "score_null_p95": round(p95, 4), "score_null_p975": round(p975, 4),
                               "exceeds_null": bool(exceeds)},
         "conclusion": conclusion, "max_effect_h": round(max_h, 4),
+        # 呈现诚实化（弱项#2 修复）：明确 score 是点估计、是否显著以 CI/Fisher p 为准，
+        # 而非裸 score。供大屏与诚实闸门统一引用，避免"score 高却裁决 random"被误读。
+        "significant": bool(ci[0] > 0.05),
+        "significance_note": (
+            f"方向得分 score={score:.3f} 为点估计(Stouffer-Z 标度)，95%CI=[{ci[0]:.3f},{ci[1]:.3f}]"
+            f"{' 含 0' if ci[0] <= 0.05 else ' 不含 0'}；"
+            f"Fisher 组合 p={fisher_p:.4f}。"
+            f"{'CI 含 0 → 不显著，裁决依据 CI+OOS 盲评，而非裸 score。' if ci[0] <= 0.05 else 'CI 不含 0 → 方向显著，但仍须经 OOS 盲评复现。'}"
+        ),
     }
 
 

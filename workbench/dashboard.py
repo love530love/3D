@@ -624,6 +624,11 @@ function evolutionGauge(dir,fv){
   const c0=x(ci[0]), c1=x(ci[1]);
   const sx=x(score);
   const verdictLabel=fv.winner_label||'-';
+  // 弱项#2 修复：头条以"是否显著"为准，而非裸 score。significant 优先用引擎字段，
+  // 回退：CI 下限>0.05 视为方向显著为正。
+  const significant = (typeof dir.significant==='boolean') ? dir.significant : (ci[0] > 0.05);
+  const sigLabel = significant ? '方向显著为正 (CI 不含 0)' : '不显著 (CI 含 0)';
+  const sigCls = significant ? 'warn' : 'ok';
   let s=`<svg class="chart" viewBox="0 0 ${W} ${H}">`;
   s+=`<rect x="${x(-1)}" y="40" width="${(W-2*pad).toFixed(1)}" height="16" rx="8" fill="var(--border)"/>`;
   s+=`<rect x="${nb0.toFixed(1)}" y="40" width="${(nb1-nb0).toFixed(1)}" height="16" fill="rgba(139,152,168,.35)"/>`;
@@ -634,13 +639,20 @@ function evolutionGauge(dir,fv){
   s+=`<text x="${x(-1)}" y="88" font-size="11" fill="#93a1b1">随机(H₀) -1</text>`;
   s+=`<text x="${x(0)}" y="88" font-size="11" fill="#93a1b1" text-anchor="middle">0</text>`;
   s+=`<text x="${x(1)}" y="88" font-size="11" fill="#93a1b1" text-anchor="end">可预测(H⁺) +1</text>`;
-  s+=`<text x="${sx.toFixed(1)}" y="106" font-size="12" fill="var(--warn)" text-anchor="middle">score=${score.toFixed(3)}</text>`;
+  s+=`<text x="${sx.toFixed(1)}" y="106" font-size="12" fill="var(--warn)" text-anchor="middle">score=${score.toFixed(3)}（点估计）</text>`;
   s+='</svg>';
   const cls=fv.winner==='random'?'ok':(fv.winner==='weak_signal'?'warn':'nd');
-  let h=`<div class="card" style="margin-bottom:14px"><h3>③ 决策方向科学评价（单一方向标量 score=tanh(Z)∈(−1,+1)）</h3>
+  let h=`<div class="card" style="margin-bottom:14px"><h3>③ 决策方向科学评价（头条：是否显著 · 而非裸 score）</h3>
+    <div class="ab ${sigCls}" style="margin-bottom:10px"><div class="l">显著性结论</div><div class="v" style="font-size:15px">${sigLabel}</div></div>
     ${s}
-    <div class="desc">灰带=零分布 97.5% 区间(±${nullP975.toFixed(2)}，落入即"与随机不可区分")；蓝带=score 的 95% CI=${JSON.stringify(ci)}。信心(可预测)=${dir.confidence_predictable!=null?dir.confidence_predictable.toFixed(3):'-'} · 等价随机信心=${dir.confidence_random_equiv!=null?dir.confidence_random_equiv.toFixed(3):'-'} · Fisher p=${dir.fisher_p!=null?dir.fisher_p.toFixed(4):'-'} · Stouffer Z=${dir.stouffer_z!=null?dir.stouffer_z.toFixed(3):'-'} · 组合BF=${dir.bayes_factor_portfolio!=null?dir.bayes_factor_portfolio.toFixed(3):'-'} · 最大效应量h=${dir.max_effect_h!=null?dir.max_effect_h.toFixed(3):'-'} · 结论 ${dir.conclusion}</div>
-    <div class="arena-banner" style="margin-top:10px"><div class="ab ${cls}"><div class="l">最终裁决</div><div class="v" style="font-size:14px">${verdictLabel}</div></div></div>
+    <div class="desc">
+      <b>score 仅作点估计</b>（Stouffer-Z 标度，tanh 压缩到 (−1,+1)），高 score 不等于"显著可预测"——点估计受噪声放大。是否显著以 <b>95% CI 是否含 0</b> 与 <b>Fisher 组合 p</b> 为准：
+      蓝带=score 的 95% CI=[${ci[0].toFixed(3)}, ${ci[1].toFixed(3)}]${ci[0]<=0.05?'（含 0 → 不显著）':'（不含 0 → 显著）'}；
+      灰带=零分布 97.5% 区间(±${nullP975.toFixed(2)}，落入即"与随机不可区分")。
+      信心(可预测)=${dir.confidence_predictable!=null?dir.confidence_predictable.toFixed(3):'-'} · 等价随机信心=${dir.confidence_random_equiv!=null?dir.confidence_random_equiv.toFixed(3):'-'} · Fisher p=${dir.fisher_p!=null?dir.fisher_p.toFixed(4):'-'} · Stouffer Z=${dir.stouffer_z!=null?dir.stouffer_z.toFixed(3):'-'} · 组合BF=${dir.bayes_factor_portfolio!=null?dir.bayes_factor_portfolio.toFixed(3):'-'} · 最大效应量h=${dir.max_effect_h!=null?dir.max_effect_h.toFixed(3):'-'} · 结论 ${dir.conclusion}
+    </div>
+    <div class="desc" style="margin-top:6px">📌 ${dir.significance_note||'（引擎未提供显著性说明）'}</div>
+    <div class="arena-banner" style="margin-top:10px"><div class="ab ${cls}"><div class="l">最终裁决（依据 CI+OOS 盲评，而非裸 score）</div><div class="v" style="font-size:14px">${verdictLabel}</div></div></div>
   </div>`;
   return h;
 }

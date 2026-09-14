@@ -172,11 +172,20 @@ def run_batch(label: str, mode: str = "standard", last_n: int = 200, top_k: int 
         log.append(f"debate arena: SKIP ({e})")
 
     # 4) 进化引擎（ai + human + deep）：跨运行累积 + 近失回流
+    #    run_evolution 只返回报告 dict、不落盘；这里接住返回值并写回 evolution-arena-latest.json，
+    #    使大屏/引擎状态反映"本次"运行（否则离线自驱后大屏仍显示陈旧进化数据，且闸门会误检旧报告）。
+    evo_report: dict = {}
     try:
         from .evolution_arena import run_evolution as _evo
-        _evo(DB, last_n=last_n, top_k=top_k, alpha=alpha, fdr_q=fdr_q,
+        evo_report = _evo(DB, last_n=last_n, top_k=top_k, alpha=alpha, fdr_q=fdr_q,
              max_gens=m["max_gens"], oos_n=m["oos_n"], new_per_gen=m["new_per_gen"],
-             persist=True, reset_state=False)
+             persist=True, reset_state=False) or {}
+        try:
+            REPORTS.mkdir(parents=True, exist_ok=True)
+            (REPORTS / "evolution-arena-latest.json").write_text(
+                json.dumps(evo_report, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as we:
+            log.append(f"evolution arena: write report SKIP ({we})")
         log.append("evolution arena: done")
     except Exception as e:
         log.append(f"evolution arena: ERROR ({e})")
@@ -186,9 +195,13 @@ def run_batch(label: str, mode: str = "standard", last_n: int = 200, top_k: int 
     gate = {"passed": True, "issues": [], "honesty_score": 1.0}
     try:
         from . import roles_exec
-        evo_path = REPORTS / "evolution-arena-latest.json"
-        if evo_path.exists():
-            rep = json.loads(evo_path.read_text(encoding="utf-8"))
+        # 优先检查本次 fresh 报告（evo_report）；落盘失败/为空时回退读文件
+        rep = evo_report if evo_report else None
+        if not rep:
+            evo_path = REPORTS / "evolution-arena-latest.json"
+            if evo_path.exists():
+                rep = json.loads(evo_path.read_text(encoding="utf-8"))
+        if rep:
             gate = roles_exec.gatekeeper_check(rep)
             log.append(f"gatekeeper: passed={gate['passed']} honesty={gate['honesty_score']}" +
                        ("" if gate["passed"] else f" ISSUES={gate['issues']}"))
