@@ -559,6 +559,7 @@ function evolutionHtml(){
   h+=evolutionGauge(dir,fv);
   h+=evolutionConvergence(r.generations||[], cfg.oos_n);
   h+=evolutionLineage(r.lineage||[], r.evidence||[]);
+  h+=evolutionOpenHypotheses(r);
   h+=evolutionArsenal(ar);
   h+=evolutionOOS(oos,cfg);
   h+=evolutionFinal(fv,cfg);
@@ -619,7 +620,7 @@ function evolutionConvergence(gens, oosN){
   h+='</tbody></table>';
   h+=`<div class="note">各代方向得分（−1 随机 … +1 可预测）：</div>`;
   h+=svgLine(scores,{min:-1,max:1,color:'#d29922'});
-  h+=`<div class="desc">收敛判据：连续两代 0 存活 且 方向得分≈0 → 宣布纯随机并停止生成。生成越多假设，全局 FDR 阈值越严（q_eff=q0×m0/m，防数据淘金）；OOS 盲窗训练严格限定在末 ${oosN||''} 期之前。</div>`;
+  h+=`<div class="desc">开放探索姿态：引擎<b>不以"未检出信号"为由停止生成</b>，仅在达到 max_gens 上限时结束本轮；跨运行还会推进随机种子并回流近失假设继续探索。生成越多假设，全局 FDR 阈值越严（q_eff=q0×m0/m，防数据淘金）；OOS 盲窗训练严格限定在末 ${oosN||''} 期之前。</div>`;
   return h+'</div>';
 }
 function evolutionLineage(lineage, evidence){
@@ -638,6 +639,22 @@ function evolutionLineage(lineage, evidence){
   });
   h+='</tbody></table></div>';
   return h+'</div>';
+}
+function evolutionOpenHypotheses(r){
+  const oh=(r.open_hypotheses||[]);
+  let h=`<div class="card" style="margin-bottom:14px"><h3>开放假设 · 持续探索中的弱信号（不视为失败）</h3>`;
+  if(!oh.length){
+    h+='<div class="note">本轮无"近失"主张（p&lt;0.2 但未过 FDR）。它们会在后续运行以近失种子形式回流重验；当前特征空间下暂无可标定的微妙联结。</div>';
+    return h+'</div>';
+  }
+  h+=`<div class="desc">这些主张当前未通过 FDR 严格闸门，但 p 值已逼近临界（&lt;0.2），属"微妙联结的蛛丝马迹"。本引擎把它们作为<b>开放假设</b>持续追踪，而非"已被证伪"——下一轮会以近失种子回流，换角度/换数据窗口继续检验。</div>`;
+  h+=`<div class="scrolltable"><table class="evo-table"><thead><tr><th>主张</th><th>来源</th><th>族 / 特征</th><th>命中率/基线</th><th>双侧p</th><th>h</th><th>BF</th><th>状态</th></tr></thead><tbody>`;
+  oh.forEach(l=>{
+    const f=l.fitness||{};
+    h+=`<tr><td class="mono" title="${l.claim_id}">${(l.claim_id||'').slice(0,28)}</td><td>${l.origin||'-'}</td><td>${l.family||'-'}${l.feats?(' / '+l.feats.join(',')):''}</td><td>${(f.exact_rate*100).toFixed(2)}% / ${(f.expected_exact_rate*100).toFixed(2)}%</td><td>${f.two_sided_p!=null?f.two_sided_p.toFixed(3):'-'}</td><td>${f.effect_size_h!=null?f.effect_size_h.toFixed(3):'-'}</td><td>${f.bayes_factor!=null?f.bayes_factor.toFixed(2):'-'}</td><td><span class="tag open">开放</span></td></tr>`;
+  });
+  h+='</tbody></table></div></div>';
+  return h;
 }
 function evolutionArsenal(ar){
   let h=`<div class="card" style="margin-bottom:14px"><h3>反方武器库 · 随机性检验（${ar.n_tests||0} 项）</h3><div class="desc">${ar.summary||''}</div>`;

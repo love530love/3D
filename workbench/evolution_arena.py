@@ -73,7 +73,8 @@ def _save_engine_state(state: dict, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
-FEAT_POOL = ["digit", "parity", "prime", "sum", "sum_tail", "span", "trend"]
+FEAT_POOL = ["digit", "parity", "prime", "sum", "sum_tail", "span", "trend",
+             "pos_pair", "sum_digit", "span_parity"]
 PRIMES = {2, 3, 5, 7}
 
 
@@ -120,6 +121,25 @@ def _build_filter(features: list[str], rng: random.Random):
         d = str(rng.randint(0, 9))
         pos = rng.randint(0, 2)
         conds.append(lambda n, d=d, pos=pos: n[pos] == d)
+    # —— 关系型/交互型原语：捕捉"事物之间的微妙联结"（而非单变量谓词）——
+    if "pos_pair" in features:
+        # 两位之间的联结：同奇偶 / 相等 / 相差1（位间结构）
+        mode = rng.choice(["same_parity", "equal", "diff_one"])
+        a, b = rng.sample([0, 1, 2], 2)
+        if mode == "same_parity":
+            conds.append(lambda n, a=a, b=b: (int(n[a]) % 2) == (int(n[b]) % 2))
+        elif mode == "equal":
+            conds.append(lambda n, a=a, b=b: n[a] == n[b])
+        else:
+            conds.append(lambda n, a=a, b=b: abs(int(n[a]) - int(n[b])) == 1)
+    if "sum_digit" in features:
+        # 和尾 与 某一位数字耦合（和值—位值的微妙联结）
+        p = rng.randint(0, 2)
+        conds.append(lambda n, p=p: (_sum(n) % 10) == int(n[p]))
+    if "span_parity" in features:
+        # 跨度奇偶 与 某一位奇偶耦合（跨度—单值的微妙联结）
+        p = rng.randint(0, 2)
+        conds.append(lambda n, p=p: ((int(max(n)) - int(min(n))) % 2) == (int(n[p]) % 2))
     if not conds:
         conds.append(lambda n: True)
 
@@ -453,6 +473,7 @@ class EvolutionArena:
         self.prev_winner = self.prev_state.get("last_winner")
         self.lineage: dict[str, dict] = {}
         self.claim_registry: dict[str, dict] = {}
+        self.search_ever_open = False   # 探索永不主动关闭（反"躺平"姿态标志）
         self.base_claims = _build_pro_claims()
         for c in self.base_claims:
             self.claim_registry[c["id"]] = c
@@ -539,10 +560,14 @@ class EvolutionArena:
             return "weak_signal", (
                 "方向得分置信区间整体为正，提示存在微弱可预测成分，但盈利性未经盲评证实，"
                 "不构成投注建议。")
+        # 「当前未检出」≠「已证伪 / 探索终止」：以开放的科学姿态陈述证据，而非关闭研究。
         return "random", (
-            "反方（科学随机派）占优：所有主张经精确二项检验 + Benjamini-Hochberg FDR"
+            "当前样本与特征空间下，所有主张经精确二项检验 + Benjamini-Hochberg FDR"
             "（含全局递增惩罚）后无一稳定、显著超越均匀随机基线；决策方向得分≈0 且落在零分布带内，"
-            "未检出可预测信号。福彩3D 开奖与均匀随机不可区分。")
+            "即'当前证据不足以支持可预测信号'。"
+            "但这**不是**'开奖为纯随机、探索终止'的结论——混沌系统（如天气、湍流）同样难以精确预测，"
+            "却始终可被建模、逼近与改进。本引擎以开放心态持续追踪弱信号与微妙联结，每次运行推进随机种子并回流近失假设，"
+            "绝不把'不可预测'预设为终局假设；只要样本、特征空间或视角尚未穷尽，探索就不关闭。")
 
     def run(self) -> dict:
         all_evidence: list[dict] = []
@@ -550,7 +575,8 @@ class EvolutionArena:
         survivors_ids: set[str] = set()
         prior_near_miss: list[dict] = []
         m_tested = 0
-        converged_at = None
+        # 搜索状态恒为"开放"：本引擎不以"未检出信号"为理由关闭探索
+        search_status = "open"
 
         for gen in range(self.max_gens):
             if gen == 0:
@@ -596,12 +622,14 @@ class EvolutionArena:
                 "score_ci": ds["score_ci"], "fisher_p": ds["fisher_p"],
             })
 
-            # 收敛判据：连续两代 0 存活 且 方向得分≈0 -> 宣布纯随机，停止生成
+            # 开放探索姿态（反"躺平"）：绝不因"未检出信号"而终止搜索。
+            # 连续两代 0 存活且方向得分≈0 仅记为"当前窗口暂无强信号"，不 break；
+            # 搜索在达到 max_gens 硬上限前永不主动关闭。跨运行还会推进随机种子 +
+            # 回流上一轮近失特征种子，使"没有立刻找到"变成"下一轮换角度继续找"。
             if (gen >= 2 and generations[-1]["n_survivors"] == 0
                     and generations[-2]["n_survivors"] == 0
                     and abs(generations[-1]["score"]) < 0.05):
-                converged_at = gen
-                break
+                self.search_ever_open = True
             prior_near_miss = near
 
         oos = self._oos_check(survivors_ids)
@@ -621,7 +649,9 @@ class EvolutionArena:
         disclaimer = (
             "本进化擂台为假设检验与激励模拟演示，不构成任何投注建议。福彩3D 开奖为受监管随机过程；"
             "即使个别策略统计显著，也须扣除成本后仍盈利方可实用（统计显著 ≠ 实战可盈利）。"
-            "统计未检出 ≠ 证明纯随机，仅表示'无可检测的可预测信号'。")
+            "统计未检出 ≠ 证明纯随机，仅表示'当前证据下无可检测的可预测信号'。"
+            "本项目的姿态：不以'无法预测'开启躺平——像预报天气那样，持续建模、追踪弱信号与微妙联结，"
+            "把'不可预测'当作待检验的开放假设，而非探索的终点。")
 
         report = {
             "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -634,8 +664,13 @@ class EvolutionArena:
             "ledger": self.ledger.to_dict(),
             "arsenal": arsenal,
             "generations": generations,
-            "converged_at": converged_at,
+            "search_status": search_status,
             "lineage": list(self.lineage.values()),
+            # 开放假设：把"近失"(p<0.2 但未过 FDR)的主张框定为仍在探索的开放线索，
+            # 而非"失败"。它们会作为近失种子回流到下一轮 cross_seeds 继续检验。
+            "open_hypotheses": [
+                l for l in self.lineage.values() if l.get("status") == "near_miss"
+            ],
             "evidence": all_evidence,
             "directional": directional,
             "oos": oos,
@@ -652,9 +687,9 @@ class EvolutionArena:
             "final_verdict": {
                 "winner": winner,
                 "winner_label": {
-                    "random": "反方胜 · 纯随机占优（未检出可预测信号）",
+                    "random": "当前未检出可区分信号 · 但探索持续开放（不预设不可预测）",
                     "weak_signal": "存在微弱可预测信号，需进一步盲评验证",
-                    "inconclusive": "结论不确定",
+                    "inconclusive": "证据不确定，继续探索",
                 }[winner],
                 "profit_per_bet": (round(profit_per_bet, 4) if profit_per_bet is not None else None),
                 "best_survivor": (max(oos["survivors"], key=lambda r: r["exact_rate"])["claim"]
