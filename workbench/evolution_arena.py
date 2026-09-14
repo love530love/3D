@@ -575,9 +575,13 @@ class EvolutionArena:
             self.ledger.survive(cid, e["merit_w"])
             self.ledger.wrongful_reject(cid)   # 反方挑战了但最终存活 -> 反方误驳
         else:
-            # 正方诚实撤回（明显劣于基线者主动认错） vs 反方正确驳回
+            # 正方诚实撤回（明显劣于基线者主动认错） vs 近失(开放假设,正向激励) vs 反方正确驳回
             if e["verdict"] == "显著劣于随机基线":
                 self.ledger.retract(cid)
+            elif (e["two_sided_p"] or 1) < 0.2:
+                # 近失/开放假设：虽未过 FDR，但推动了探索前沿 -> 正向激励
+                # （直接修复"长期负激励导致系统评价崩溃"：在没有最终结论前也奖励探索弱信号）
+                self.ledger.near_miss(cid, e["merit_w"])
             else:
                 dec = _clamp((0.05 - (e["two_sided_p"] or 0.5)) / 0.05, 0.0, 1.0)
                 self.ledger.reject(cid, dec)
@@ -799,6 +803,7 @@ def run_evolution(db: Path, last_n: int = 200, top_k: int = 10, alpha: float = 0
     eff_seed = seed + prev_runs * 7919
     arena = EvolutionArena(db, last_n, top_k, alpha, fdr_q, max_gens, prize, cost,
                            oos_n, eff_seed, new_per_gen, m0, prev_state=prev)
+    arena.ledger.round_grant(prev_runs + 1)   # 每轮基础拨款，防止长期负激励导致账本崩溃
     report = arena.run()
     if persist:
         state = {

@@ -37,6 +37,16 @@ class IncentiveLedger:
     C_SUB = 5   # 正方提交主张冻结押金（AP）
     C_CHL = 5   # 反方发起挑战费（RP）
 
+    # —— 防"长期负激励崩溃"护栏（2026-09-14 新增）——
+    # 设计动机：在没有最终可预测结论前，探索弱信号的行为本身应被正向激励，
+    # 否则自进化探索动力会枯竭（"躺平"），违背项目"禁止躺平式结论"的核心原则。
+    REP_FLOOR = 0.0          # 声誉下限：声誉不得为负，防止账本语义崩溃
+    BASE_GRANT_PRO_AP = 80.0 # 每轮基础拨款：正方"探索研究金"（保持偿付能力）
+    BASE_GRANT_CON_RP = 20.0 # 每轮基础拨款：反方"监管vigilance金"（对称公平）
+    NEAR_MISS_AP = 12.0      # 近失/开放假设"探索前沿奖"（在退还押金之外）
+    NEAR_MISS_REP = 1.0
+    BOOTSTRAP_PRO_AP = 50.0  # 历史负分一次性引导拨款（仅当探索方破产时触发）
+
     def __init__(self, path: Path | None = None):
         self.version = 1
         self.round = 0
@@ -106,6 +116,7 @@ class IncentiveLedger:
         self.camps["pro"]["rep"] -= 3.0
         if claim_id in self.claims:
             self.claims[claim_id]["status"] = "rejected"
+        self.camps["pro"]["rep"] = _clamp(self.camps["pro"]["rep"] - 3.0, self.REP_FLOOR, 1e9)
         self._record("pro", f"reject:{claim_id}", 0, -3.0, "主张被驳回：押金没收，Rep-3")
         # 反方纠错
         reward = 30.0 + 10.0 * _clamp(decisiveness, 0.0, 1.0)
@@ -120,11 +131,43 @@ class IncentiveLedger:
     def wrongful_reject(self, claim_id: str) -> None:
         """反方错误驳回（主张其实存活，反方却挑战过）：没收挑战费 + Rep-5。"""
         self.camps["con"]["rp"] -= self.C_CHL
-        self.camps["con"]["rep"] -= 5.0
+        self.camps["con"]["rep"] = _clamp(self.camps["con"]["rep"] - 5.0, self.REP_FLOOR, 1e9)
         self.camps["con"]["wrongful"] += 1
         self._record("con", f"wrongful:{claim_id}", -self.C_CHL, -5.0,
                      "错误驳回（主张存活）：挑战费没收，Rep-5")
         self._recalc_badges()
+
+    def near_miss(self, claim_id: str, merit_w: float = 0.0) -> None:
+        """近失 / 开放假设：虽未过 FDR，但推动探索前沿，获正向激励（不没收押金）。
+
+        直接回应机制设计的'长期负激励崩溃'风险——在没有最终可预测结论前，
+        探索弱信号的行为本身应被奖励，否则自进化探索动力会枯竭（"躺平"）。
+        """
+        refund = self.C_SUB                       # 退还提交押金
+        bonus = self.NEAR_MISS_AP * (0.5 + 0.5 * _clamp(merit_w, 0.0, 1.0))
+        total = refund + bonus
+        self.camps["pro"]["ap"] += total
+        self.camps["pro"]["rep"] = _clamp(self.camps["pro"]["rep"] + self.NEAR_MISS_REP,
+                                         self.REP_FLOOR, 1e9)
+        if claim_id in self.claims:
+            self.claims[claim_id]["status"] = "near_miss"
+        self._record("pro", f"near_miss:{claim_id}", total, self.NEAR_MISS_REP,
+                     f"近失/开放假设：退押金+探索前沿奖{bonus:.1f}AP（merit_w={merit_w:.2f}）")
+
+    def round_grant(self, round_no: int) -> None:
+        """每轮基础拨款：双方各获 baseline 代币，保证长期偿付能力、避免激励枯竭。
+
+        pro 拿'探索研究金'、con 拿'监管vigilance金'，与谁'赢得辩论'无关——
+        辩论胜负是科学结论（con 赢=诚实无信号），但双方都应保持偿付与动机，
+        否则系统对'探索'的评价会陷入长期负分而崩溃。
+        """
+        self.camps["pro"]["ap"] += self.BASE_GRANT_PRO_AP
+        self._record("pro", f"grant:round{round_no}", self.BASE_GRANT_PRO_AP, 0.0,
+                     f"基础拨款·探索研究金（第{round_no}轮）")
+        self.camps["con"]["rp"] += self.BASE_GRANT_CON_RP
+        self._record("con", f"grant:round{round_no}", self.BASE_GRANT_CON_RP, 0.0,
+                     f"基础拨款·监管vigilance金（第{round_no}轮）")
+        self.round = max(self.round, round_no)
 
     def catch_cheat(self, claim_id: str = "") -> None:
         """抓作弊（窥未来 / 改库）：赏金 200 RP + Rep+10；正方封禁清零。"""
@@ -162,6 +205,21 @@ class IncentiveLedger:
             {"act": act, "d_ap": round(d_ap, 2), "d_rep": round(d_rep, 2), "note": note}
         )
 
+    def _normalize_rep(self) -> None:
+        """声誉下限 + 探索方破产一次性引导拨款（防止历史负分导致账本语义崩溃）。
+
+        仅当加载到'探索方 AP 为负'的遗留状态时触发一次，把其恢复到可偿付基线
+        (+BOOTSTRAP_PRO_AP)，并在 history 留下诚实可追溯的记录；一旦恢复为正，
+        后续加载不再重复触发。这是'版本管理可还原'框架下的安全调和，非篡改历史。
+        """
+        self.camps["pro"]["rep"] = max(self.REP_FLOOR, self.camps["pro"]["rep"])
+        self.camps["con"]["rep"] = max(self.REP_FLOOR, self.camps["con"]["rep"])
+        if self.camps["pro"]["ap"] < 0:
+            topup = -self.camps["pro"]["ap"] + self.BOOTSTRAP_PRO_AP
+            self.camps["pro"]["ap"] += topup
+            self._record("pro", "legacy_reconcile", topup, 0.0,
+                         f"历史负分调和：引导拨款{topup:.0f}AP（防账本崩溃）")
+
     def _load(self, path: Path) -> None:
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -173,6 +231,7 @@ class IncentiveLedger:
         self.camps = data.get("camps", self.camps)
         self.claims = data.get("claims", {})
         self.badges = data.get("badges", self.badges)
+        self._normalize_rep()
 
     @classmethod
     def from_dict(cls, d: dict) -> "IncentiveLedger":
@@ -184,6 +243,7 @@ class IncentiveLedger:
         obj.camps = d.get("camps", obj.camps)
         obj.claims = d.get("claims", {})
         obj.badges = d.get("badges", obj.badges)
+        obj._normalize_rep()
         return obj
 
     def to_dict(self) -> dict:

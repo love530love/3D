@@ -568,6 +568,7 @@ function evolutionHtml(){
   const esNote = es.runs ? ` · 引擎累计运行 ${es.runs} 次（跨运行累积账本+近失种子）` : '';
   let h=`<div class="note">生成 ${r.generated_at} · 配置 ${JSON.stringify(cfg)} · 累计主张 ${(r.lineage||[]).length} 项，反方武器库 ${ar.n_tests||0} 项随机性检验${esNote}</div>`;
   h+=evolutionLedgerHtml(pro,con,badges);
+  h+=evolutionHealth(pro,con,fv,lg);
   h+=evolutionGauge(dir,fv);
   h+=evolutionConvergence(r.generations||[], cfg.oos_n);
   h+=evolutionLineage(r.lineage||[], r.evidence||[]);
@@ -590,6 +591,28 @@ function evolutionLedgerHtml(pro,con,badges){
       <div class="ledger-card con"><div class="ll">挑战/正确/误驳</div><div class="lv">${con.challenges||0} / ${con.correct||0} / ${con.wrongful||0}</div></div>
     </div>
     <div class="desc" style="margin-top:6px">规则：提交冻结押金(C_SUB=5)；经 FDR+安慰剂+复现+盈利闸全过 → 退还押金并按 merit_w 奖励 50×merit_w AP、Rep+4；被驳回没收押金、Rep-3；诚实撤回退押金+20AP、Rep+2。反方正确驳回得 30+10×decisiveness RP、Rep+3；误驳 Rep-5。Rep 与积分分离，科学权重优先。徽章：Bronze→Silver→Gold→Platinum 由 Rep 与战绩阈值决定。</div>
+  </div>`;
+}
+function evolutionHealth(pro,con,fv,lg){
+  // 系统健康度：把"未检出可预测信号"与"探索方是否被负激励压垮"解耦显示
+  const proSolv = (pro.ap!=null && pro.ap>=0) && (pro.rep!=null && pro.rep>=0);
+  const conWin = fv.winner==='random' || fv.winner==='no_signal';
+  const baseGrants = (pro.history||[]).filter(h=>String(h.act).startswith && h.act.startsWith('grant:')).length;
+  const nmCredits = (pro.history||[]).filter(h=>String(h.act).startswith && h.act.startsWith('near_miss:')).length;
+  let cls = proSolv ? 'ok' : 'bad';
+  let title = proSolv ? '系统健康 · 探索方具备正向激励' : '系统告警 · 探索方陷入负激励';
+  let body = proSolv
+    ? '探索方（正方）已具<b>基础代币</b>（每轮 round_grant +80 AP）与<b>近失探索激励</b>（near_miss 返还押金+按 merit_w 奖励 12×(0.5+0.15w) AP），长期负激励导致评价崩溃的风险已解除。Rep 设下限(≥0)，声望不会被惩罚成负值。'
+    : '探索方积分或声望已跌破下限，需触发 legacy_reconcile 兜底（from_dict 加载时自动归一化）。';
+  if(conWin){
+    body += ' 当前<b>反方获胜=诚实的科学结论（当前样本与特征空间下未检出可预测信号）</b>，这<b>不是系统失败</b>——它恰是宪章要求的"未检出≠宣称不可预测"的现状声明。探索方仍按其"探索行为本身"而非"是否赢下辩论"获得激励，故可持续逼近弱信号。';
+  } else {
+    body += ' 当前探索方在辩论中取得阶段性证据优势，激励与结论方向一致。';
+  }
+  body += ` 本轮已发基础代币批次=<b>${baseGrants}</b>，近失激励次数=<b>${nmCredits}</b>（含跨运行回流重验）。`;
+  return `<div class="card" style="margin-bottom:14px;border-left:3px solid var(--${cls=='ok'?'ok':'warn'})"><h3>④-0 系统健康度（激励稳健性）</h3>
+    <div class="ab ${cls}"><div class="l">${title}</div><div class="v" style="font-size:14px">${proSolv?'探索方 AP='+(pro.ap!=null?pro.ap.toFixed(1):'-')+' / Rep='+(pro.rep!=null?pro.rep.toFixed(1):'-')+' ✓':'需兜底'}</div></div>
+    <div class="desc" style="margin-top:8px">${body}</div>
   </div>`;
 }
 function evolutionGauge(dir,fv){
