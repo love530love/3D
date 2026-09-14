@@ -127,6 +127,14 @@ th{color:var(--muted);font-weight:600;background:rgba(255,255,255,.02)}
 .tag.random{background:rgba(139,152,168,.18);color:#93a1b1}
 .tag.comprehensive{background:rgba(210,153,34,.2);color:#d29922}
 .tag.base{background:rgba(63,185,80,.15);color:#3fb950}
+.badge.L3{background:rgba(248,81,73,.25);color:#f85149}
+.badge.iv{font-size:11px;font-weight:600}
+.badge.iv.accept{background:rgba(63,185,80,.18);color:#3fb950}
+.badge.iv.quarantine{background:rgba(210,153,34,.2);color:#d29922}
+.badge.iv.reject{background:rgba(248,81,73,.18);color:#f85149}
+.ivgrid{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px}
+.ivgrid .p{display:flex;flex-direction:column;font-size:12px;color:var(--muted)}
+.ivgrid .p b{color:var(--text);font-size:15px}
 @media print{
   .params{display:none!important}
   .scrolltable{max-height:none!important;overflow:visible!important}
@@ -173,7 +181,7 @@ function renderKpis(){
   box.innerHTML=items.map(([l,v])=>`<div class="kpi"><div class="label">${l}</div><div class="value">${v??'—'}</div></div>`).join('');
 }
 function renderTabs(){
-  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['arena','模型竞技场'],['debate','双阵营辩论擂台'],['evolution','进化擂台'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
+  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['arena','模型竞技场'],['debate','双阵营辩论擂台'],['evolution','进化擂台'],['interventions','干预治理'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
   document.getElementById('tabs').innerHTML=tabs.map(([id,t],i)=>`<button data-tab="${id}" class="${i===0?'active':''}">${t}</button>`).join('');
   document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('active'));
@@ -191,6 +199,7 @@ function showPanel(id){
   else if(id==='arena')c.innerHTML=arenaHtml();
   else if(id==='debate')c.innerHTML=debateHtml();
   else if(id==='evolution')c.innerHTML=evolutionHtml();
+  else if(id==='interventions')c.innerHTML=interventionsHtml();
   else if(id==='decisions')c.innerHTML=decisionsHtml();
   else if(id==='timeline')c.innerHTML=timelineHtml();
   else if(id==='reports')c.innerHTML=reportsHtml();
@@ -692,6 +701,63 @@ function evolutionFinal(fv,cfg){
   h+=`<div class="desc" style="margin-top:8px;color:var(--muted)">${fv.disclaimer||''}</div></div>`;
   return h;
 }
+function interventionsHtml(){
+  const iv=STATE.interventions;
+  if(!iv)return '<div class="note">尚未有任何人机干预记录。</div>';
+  const c=iv.counts||{};
+  let h=`<div class="note">人类干预治理层（「自主神经稳态」入口）：人类只能以受控、可审计、带自保护的干预请求影响系统——调参 / 加因子 / 推翻裁决 / 重置均按风险分级 L0→L3，并经泄漏检测 / 显著性膨胀 / 重置滥用 / 无证据推翻 / cherry-pick 等稳态检查，决定 accept(应用) / quarantine(待复核) / reject(拒绝)。全部 append-only 记录，不可篡改。</div>`;
+
+  h+=`<div class="arena-banner">
+    <div class="ab"><div class="l">累计干预</div><div class="v">${c.total||0}</div></div>
+    <div class="ab ok"><div class="l">接受(应用)</div><div class="v">${c.accept||0}</div></div>
+    <div class="ab warn"><div class="l">隔离(待复核)</div><div class="v">${c.quarantine||0}</div></div>
+    <div class="ab bad"><div class="l">拒绝(自保护)</div><div class="v">${c.reject||0}</div></div>
+  </div>`;
+
+  const ov=iv.overrides||{};
+  const ovKeys=Object.keys(ov);
+  h+=`<div class="card" style="margin-bottom:14px"><h3>生效中的参数覆盖（仅 accept 者，引擎每次运行加载）</h3>`;
+  if(ovKeys.length){
+    h+='<div class="ivgrid">'+ovKeys.map(k=>`<div class="p"><span>${k}</span><b>${ov[k]}</b></div>`).join('')+'</div>';
+    h+='<div class="desc" style="margin-top:8px">这些参数覆盖正被自进化引擎在每次运行时加载（见「进化擂台」配置里的 overrides_applied）。</div>';
+  }else{
+    h+='<div class="note">无生效参数覆盖。</div>';
+  }
+  h+='</div>';
+
+  const reg=iv.factor_registry||[];
+  h+=`<div class="card" style="margin-bottom:14px"><h3>人类注册影响因子（已接入引擎，每代参与评估）</h3>`;
+  if(reg.length){
+    h+='<div class="scrolltable"><table class="evo-table"><thead><tr><th>因子 spec</th><th>注册者</th><th>注册时间</th></tr></thead><tbody>';
+    reg.forEach(s=>{
+      const spec=s.spec||s; const by=s.by||'-'; const ts=s.created_at||'-';
+      h+=`<tr><td class="mono">${JSON.stringify(spec)}</td><td>${by}</td><td>${ts}</td></tr>`;
+    });
+    h+='</tbody></table></div>';
+  }else{
+    h+='<div class="note">无注册因子。</div>';
+  }
+  h+='</div>';
+
+  const log=iv.log||[];
+  h+=`<h3>干预账本（append-only，最近 50 条倒序）</h3>`;
+  if(log.length){
+    h+='<div class="scrolltable"><table class="evo-table"><thead><tr><th>时间</th><th>类型</th><th>分级</th><th>决定</th><th>操作者</th><th>理由/复核</th></tr></thead><tbody>';
+    log.forEach(r=>{
+      const tier=r.tier||'-';
+      const st=r.status||'-';
+      const stCls=st==='accept'?'accept':(st==='quarantine'?'quarantine':'reject');
+      const reasons=(r.reasons&&r.reasons.length)?r.reasons.join('；'):(r.rationale||'-');
+      h+=`<tr><td>${r.decided_at||r.created_at||'-'}</td><td>${r.type||'-'}</td><td>${riskBadge(tier)}</td><td><span class="badge iv ${stCls}">${st}</span></td><td>${r.by||'-'}</td><td class="desc">${reasons}</td></tr>`;
+    });
+    h+='</tbody></table></div>';
+  }else{
+    h+='<div class="note">暂无干预记录。</div>';
+  }
+  h+=`<div class="note">调用方式（服务端）：<code>python -m workbench.interventions param_change --by user --set top_k=12 --why "..."</code> · <code>add_factor --spec '{"kind":"pos_parity_eq","a":0,"b":1}'</code> · <code>override_verdict --claim &lt;id&gt; --why "..."</code> · <code>reset</code></div>`;
+  return h;
+}
+
 function backtestHtml(){
   const fb=STATE.backtest;
   if(!fb)return '<div class="note">尚未运行回测。在“功能”页运行 backtest。</div>';

@@ -51,6 +51,13 @@ from debate_arena import (  # noqa: E402
     chi2_sf,
 )
 from incentive_ledger import IncentiveLedger  # noqa: E402
+# 人工干预治理层：把"人类调参 / 加因子"变成经分级 + 稳态检查 + append-only 的可审计通道。
+# 仅接受治理层 accept 后持久化的值（参数覆盖 / 因子注册表），从而让人类 legitimate 的
+# 好奇心在受控入口内生效，同时系统的稳态(自主神经隐喻)不被创造者的不稳定污染。
+from interventions import (  # noqa: E402
+    load_overrides,
+    load_factor_registry,
+)
 
 REPORTS = ROOT / "reports"
 
@@ -76,6 +83,13 @@ def _save_engine_state(state: dict, path: Path) -> None:
 FEAT_POOL = ["digit", "parity", "prime", "sum", "sum_tail", "span", "trend",
              "pos_pair", "sum_digit", "span_parity"]
 PRIMES = {2, 3, 5, 7}
+
+# 人工干预参数覆盖 → 实例属性类型映射（治理层只放行这些字段，且须按类型强制）
+_OVERRIDE_TYPES = {
+    "last_n": int, "top_k": int, "alpha": float, "fdr_q": float,
+    "max_gens": int, "prize": float, "cost": float, "oos_n": int,
+    "new_per_gen": int, "m0": int,
+}
 
 
 def _clamp(x: float, lo: float, hi: float) -> float:
@@ -147,6 +161,34 @@ def _build_filter(features: list[str], rng: random.Random):
         return all(c(n) for c in conds)
 
     return filt
+
+
+def _build_user_factor(spec: dict):
+    """把治理层注册的声明式因子 spec 编译为单-draw 谓词（与 _build_filter 同契约）。
+
+    仅接受纯单 draw 函数、位置限定 0..2，严禁任何训练/未来数据引用——
+    该约束由 interventions.risk_checks(泄漏检测) 在注册时强制，这里只做语义编译。
+    返回 (name, predicate) 或 None（未知 kind）。
+    """
+    if not isinstance(spec, dict):
+        return None
+    kind = spec.get("kind")
+    if kind == "pos_parity_eq":
+        a, b = int(spec["a"]), int(spec["b"])
+        return lambda n, a=a, b=b: (int(n[a]) % 2) == (int(n[b]) % 2)
+    if kind == "sum_mod_eq":
+        m, v = int(spec["m"]), int(spec["v"])
+        return lambda n, m=m, v=v: (_sum(n) % m) == v
+    if kind == "digit_at":
+        pos, d = int(spec["pos"]), str(spec["d"])
+        return lambda n, pos=pos, d=d: n[pos] == d
+    if kind == "span_mod_eq":
+        m, v = int(spec["m"]), int(spec["v"])
+        return lambda n, m=m, v=v: ((int(max(n)) - int(min(n))) % m) == v
+    if kind == "pos_diff_eq":
+        a, b, diff = int(spec["a"]), int(spec["b"]), int(spec["diff"])
+        return lambda n, a=a, b=b, diff=diff: abs(int(n[a]) - int(n[b])) == diff
+    return None
 
 
 def _generate_candidates(base_claims: list[dict], prior_near_miss: list[dict],
@@ -461,9 +503,12 @@ class EvolutionArena:
         self.rng = random.Random(seed)
         self.nums = load_numbers(db)
         self.total = len(self.nums)
+        # —— 人工干预治理层：应用经 accept 的参数覆盖（仅合法持久化字段）——
+        # 须在训练窗口计算之前应用，因为 last_n / oos_n 直接决定窗口边界。
+        self.overrides_applied = self._apply_overrides(load_overrides())
         # 训练评估窗口：严格排除 OOS 盲窗（不回看 OOS 数据）
-        self.train_end = max(2, self.total - oos_n)
-        self.train_start = max(1, self.train_end - last_n)
+        self.train_end = max(2, self.total - self.oos_n)
+        self.train_start = max(1, self.train_end - self.last_n)
         # 跨运行累积：账本与近失种子从上一运行继承
         self.ledger = (IncentiveLedger.from_dict(self.prev_state["ledger"])
                        if self.prev_state.get("ledger") else IncentiveLedger())
@@ -474,9 +519,46 @@ class EvolutionArena:
         self.lineage: dict[str, dict] = {}
         self.claim_registry: dict[str, dict] = {}
         self.search_ever_open = False   # 探索永不主动关闭（反"躺平"姿态标志）
-        self.base_claims = _build_pro_claims()
+        # 人类注册因子：把治理层 accept 的"加入影响因子"真正接入引擎——
+        # 作为基桩候选，每代都接受严格评估，并可被突变/组合，进入账本与谱系。
+        self.user_factors = self._load_user_factors()
+        self.base_claims = _build_pro_claims() + self.user_factors
         for c in self.base_claims:
             self.claim_registry[c["id"]] = c
+
+    # ------------------------------------------------------------------
+    # 人工干预治理层接入
+    # ------------------------------------------------------------------
+    def _apply_overrides(self, ov: dict) -> dict:
+        """仅接受治理层 accept 后持久化的合法参数覆盖，按类型强制写入实例属性。"""
+        applied = {}
+        for k, v in (ov or {}).items():
+            if k in _OVERRIDE_TYPES and hasattr(self, k):
+                try:
+                    setattr(self, k, _OVERRIDE_TYPES[k](v))
+                    applied[k] = _OVERRIDE_TYPES[k](v)
+                except Exception:
+                    pass
+        return applied
+
+    def _load_user_factors(self) -> list[dict]:
+        """把治理层注册的声明式因子编译为基桩候选，使其真正参与评估/审计/账本。"""
+        reg = load_factor_registry()
+        out = []
+        for fid, spec in reg.items():
+            pred = _build_user_factor(spec)
+            if pred is None:
+                continue
+            out.append({
+                "id": fid,
+                "name": f"人类注册因子·{fid}",
+                "family": "user_factor",
+                "belief": "人类干预注册因子：" + json.dumps(spec, ensure_ascii=False),
+                "predict": (lambda f: (lambda train, tk: _filter_combine(train, f, tk)))(pred),
+                "distribution": _dist_recent(100),
+                "origin": "user_factor", "parent_ids": [], "generation": 0,
+            })
+        return out
 
     def _register(self, c: dict) -> None:
         self.claim_registry[c["id"]] = c
@@ -660,6 +742,8 @@ class EvolutionArena:
                 "fdr_q": self.fdr_q, "max_gens": self.max_gens, "oos_n": self.oos_n,
                 "prize": self.prize, "cost_per_number": self.cost,
                 "new_per_gen": self.new_per_gen, "m0": self.m0, "seed": self.seed,
+                "overrides_applied": self.overrides_applied,
+                "user_factors_loaded": len(self.user_factors),
             },
             "ledger": self.ledger.to_dict(),
             "arsenal": arsenal,

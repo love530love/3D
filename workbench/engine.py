@@ -27,6 +27,12 @@ from .registry import (
     by_id,
     resolve_args,
 )
+# 人工干预治理层（「自主神经稳态」入口）：把追加式账本/参数覆盖/因子注册表接入大屏。
+from .interventions import (
+    INTERVENTIONS_LOG,
+    load_overrides,
+    load_factor_registry,
+)
 
 # Latest report files we surface on the dashboard.
 LATEST_REPORTS = [
@@ -613,4 +619,40 @@ def collect_state() -> dict:
         "predictive_arena": load_report("predictive-arena-latest.json"),
         "debate_arena": load_report("debate-arena-latest.json"),
         "evolution_arena": load_report("evolution-arena-latest.json"),
+        "interventions": _interventions_state(),
+    }
+
+
+def _interventions_state() -> dict:
+    """读取人工干预治理层的 append-only 账本 + 参数覆盖 + 因子注册表，供大屏可见。
+
+    人类干预（调参 / 加因子 / 推翻裁决 / 重置）经分级 + 稳态检查后落地，全部
+    append-only 记录；这里只读取、不改写，确保大屏对"人如何影响系统"透明可审。
+    """
+    log: list[dict] = []
+    if INTERVENTIONS_LOG.exists():
+        for line in INTERVENTIONS_LOG.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                log.append(json.loads(line))
+            except Exception:
+                continue
+    counts = {"total": len(log), "accept": 0, "quarantine": 0, "reject": 0}
+    for r in log:
+        st = r.get("status")
+        if st in counts:
+            counts[st] += 1
+    reg: list[dict] = []
+    try:
+        for spec in load_factor_registry().values():
+            reg.append(spec)
+    except Exception:
+        reg = []
+    return {
+        "log": list(reversed(log[-50:])),
+        "counts": counts,
+        "overrides": load_overrides(),
+        "factor_registry": reg,
     }

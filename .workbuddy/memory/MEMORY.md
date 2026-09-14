@@ -18,13 +18,20 @@
 
 ## 人机协作稳定性约定（用户 2026-09-14 提出：人是系统中最大的不稳定因素）
 - **核心判断**：任何系统里，人几乎都是最大不稳定源，且对系统影响权重很大（认知偏差、情绪化停启、阈值随意改、确认偏误 cherry-pick、权威定论、缺席导致探索停摆）。本项目的"自动进化+决策辅助"第一驱动力，正是用来**把探索的连续性与结论的诚实性从人的临时状态里解耦**。
-- **设计原则（进化改进方向，待落地）**：
-  1. **护栏代码化，而非意愿化**：把宪章与研究姿态约定写成机器强制不变量，使人（含用户本人状态不佳时）无法悄悄关闭（如滥用 `--reset-state`、临时改裁决措辞须留痕）。
-  2. **人的干预 = append-only 审计**：任何人工推翻引擎裁决必须记 before/after/原因/操作者/时间，绝不静默覆盖（复用数据主权思路，延伸到"决策"层）。
-  3. **独立"偏差审计"代理**：增设专门扫描人工干预是否带偏置的子代理（阈值突变、反复无理由 reset、cherry-pick 近失）。
-  4. **让探索自治、人退居监督**：用定时自动化让引擎持续滚动（已建「福彩3D 进化引擎·每日跨运行累积」自动化，每日 23:00 累积运行，不重置）。
-  5. **多样性+选择压平抑个体噪声**：并行多假设、多特征族、用 FDR/证据做选择压，而非依赖单一人类判断；人的意见只是众多选择压之一且是噪声最大的那个。
-  6. **漂移检测**：追踪人工干预的时间序列一致性（阈值方差、reset 频率、干预与情绪化语言的相关性），超界则暂停人工覆盖待复核。
+- **设计原则与落地状态**：
+  1. **护栏代码化，而非意愿化**：把宪章与研究姿态约定写成机器强制不变量，使人（含用户本人状态不佳时）无法悄悄关闭（如滥用 `--reset-state`、临时改裁决措辞须留痕）。【部分落地】
+  2. **人的干预 = append-only 审计 + 自保护通道**：任何人工调参/加因子/推翻裁决/重置，只能以受控、分级、带自保护的"干预请求"提交，绝不静默覆盖；全部 append-only 记录。【✅ 已落地 2026-09-15，见 `workbench/interventions.py`】
+  3. **独立"偏差审计"代理**：扫描人工干预是否带偏置（阈值突变、反复无理由 reset、cherry-pick 近失）。【待落地】
+  4. **让探索自治、人退居监督**：用定时自动化让引擎持续滚动（已建「福彩3D 进化引擎·每日跨运行累积」自动化，每日 23:00 累积运行，不重置；2026-09-15 已把干预治理层写入其 prompt）。【✅ 落地】
+  5. **多样性+选择压平抑个体噪声**：并行多假设、多特征族、用 FDR/证据做选择压，而非依赖单一人类判断；人的意见只是众多选择压之一且是噪声最大的那个。【✅ 架构内已体现】
+  6. **漂移检测**：追踪人工干预的时间序列一致性（阈值方差、reset 频率），超界则暂停人工覆盖待复核；当前由 `interventions.count_recent_resets` 实现"重置滥用"稳态检查。【部分落地】
+- **干预治理层「自主神经稳态」已落地（2026-09-15）**：
+  - 文件：`workbench/interventions.py`（实现 ②④⑥）。CLI：`python interventions.py {param_change|add_factor|override_verdict|reset} --by … --set … --spec … --why …`。
+  - 风险分级：param_change→L1 或 L2（若涉 alpha/fdr_q/prize/cost/oos_n）；add_factor/override_verdict→L2；reset→L1。
+  - 稳态检查 5 项：泄漏检测 / 显著性膨胀 / 重置滥用 / 无证据推翻 / cherry-pick。决定：accept(应用并持久化) / quarantine(记录待复核) / reject(记录并拒绝)。high 风险且为 override_verdict/reset → 直接 reject；其它 high → quarantine。
+  - 落盘：`reports/interventions.jsonl`(append-only 账本) + `reports/engine-overrides.json`(已校验参数覆盖) + `reports/engine-factor-registry.json`(声明式因子注册表)；声明式因子 DSL 仅接受 `pos_parity_eq/sum_mod_eq/digit_at/span_mod_eq/pos_diff_eq`，纯单 draw、位置 0..2，杜绝代码注入。
+  - **已接入引擎**：`evolution_arena.EvolutionArena` 在每代开局先 `load_overrides()` 覆盖参数（窗口计算前），并 `_load_user_factors()` 把注册因子作为基桩候选参与评估/审计/账本；运行报告 `config.overrides_applied` / `config.user_factors_loaded` 可见。已端到端验证。
+  - **已接入大屏**：`dashboard.py` 新增「干预治理」标签页，展示累计干预数、accept/quarantine/reject 分布、生效参数覆盖、注册因子、append-only 账本；`engine.collect_state()` 注入 `interventions` 状态。
 - 与宪章不冲突：上述均属"把人类不稳定因素工程化隔离"，不改动统计方法论与诚实闸门。
 
 ## 关键约束（贯穿所有代码，源于宪章）
