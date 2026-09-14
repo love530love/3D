@@ -575,6 +575,7 @@ function evolutionHtml(){
   h+=evolutionOpenHypotheses(r);
   h+=evolutionArsenal(ar);
   h+=evolutionOOS(oos,cfg);
+  h+=evolutionReplication(STATE.replication);
   h+=evolutionFinal(fv,cfg);
   return h;
 }
@@ -729,6 +730,31 @@ function evolutionOOS(oos,cfg){
   }
   h+='</div>';
   return h;
+}
+function evolutionReplication(rep){
+  if(!rep || !rep.role){
+    return `<div class="card" style="margin-bottom:14px"><h3>⑥ 复现验证团（replicator · 离线自治自动触发）</h3>
+      <div class="note">尚未运行复现验证。自驱动批次会自动对 FDR 存活主张做跨窗口独立复现；手动运行：<code>python -m workbench.roles exec --id replicator</code>。</div></div>`;
+  }
+  const nS=rep.n_survivors||0, nR=rep.n_replicated||0, nF=rep.n_fragile||0;
+  const rate=rep.replication_rate;
+  const rateTxt = rate==null ? '无存活主张（符合纯随机预期，无需复现）' : `复现率 ${nR}/${nS} = ${(rate*100).toFixed(0)}%`;
+  let cls = nS===0 ? 'ok' : (nR===nS ? 'ok' : 'warn');
+  let body = `对 ${nS} 个 FDR 存活主张在窗口 ${JSON.stringify(rep.windows||[])} 下独立复现：${rateTxt}。`;
+  if(nF>0) body += ` ${nF} 个仅部分窗口复现（标记为"脆弱信号"，绝不包装成稳定信号）。`;
+  let detail='';
+  if((rep.replications||[]).length){
+    detail='<table class="evo-table"><thead><tr><th>主张</th><th>复现状态</th><th>复现窗口</th><th>首窗p</th></tr></thead><tbody>';
+    rep.replications.forEach(r=>{
+      detail+=`<tr><td class="mono">${(r.claim_id||'').slice(0,28)}</td><td>${r.status}</td><td>${r.replicated_in||'-'}</td><td>${r.raw_p_first_window!=null?r.raw_p_first_window.toFixed(4):'-'}</td></tr>`;
+    });
+    detail+='</tbody></table>';
+  }
+  return `<div class="card" style="margin-bottom:14px"><h3>⑥ 复现验证团（replicator · 离线自治自动触发）</h3>
+    <div class="ab ${cls}" style="margin-bottom:8px"><div class="l">独立复现结论</div><div class="v" style="font-size:14px">${nS===0?'无存活主张需复现':(nF===0?'全部复现 ✓':'部分脆弱信号')}</div></div>
+    <div class="desc">${body}</div>${detail}
+    <div class="desc" style="margin-top:6px">宪章要求"存活信号须经 OOS + 独立复现"。该步骤在自驱动每批末尾自动执行，确保任何"疑似可预测"主张都被跨窗口独立验证，而非一次性巧合。</div>
+  </div>`;
 }
 function evolutionFinal(fv,cfg){
   let h=`<div class="card" style="margin-bottom:14px;border-left:3px solid var(--accent)"><h3>最终结论</h3><div class="desc">${fv.conclusion||''}</div>`;

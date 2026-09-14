@@ -208,6 +208,20 @@ def run_batch(label: str, mode: str = "standard", last_n: int = 200, top_k: int 
     except Exception as e:
         log.append(f"gatekeeper: SKIP ({e})")
 
+    # 4.6) 复现验证团（replicator）：对 FDR 存活主张做跨窗口独立复现（宪章要求 OOS+独立复现）。
+    #       离线自治时自动触发；存活主张若复现率低，日志显式标注"脆弱信号"，绝不包装成稳定信号。
+    replication = {"role": "replicator", "n_survivors": 0, "n_replicated": 0,
+                   "n_fragile": 0, "replication_rate": None, "replications": []}
+    try:
+        from . import roles_exec
+        replication = roles_exec.replicator_run(DB, windows=(120, 180, 240),
+                                                alpha=alpha, top_k=top_k) or replication
+        log.append(f"replicator: survivors={replication.get('n_survivors')} "
+                   f"replicated={replication.get('n_replicated')} fragile={replication.get('n_fragile')} "
+                   f"rate={replication.get('replication_rate')}")
+    except Exception as e:
+        log.append(f"replicator: SKIP ({e})")
+
     # 5) 评估 & 深度反思
     post = fitness_from_state()
     regressed = allow_rollback and post["fitness"] < pre["fitness"]
@@ -225,6 +239,7 @@ def run_batch(label: str, mode: str = "standard", last_n: int = 200, top_k: int 
         "regressed": regressed, "rolled_back": regressed,
         "metrics": post,
         "gate": gate,
+        "replication": replication,
         "thought": _reflect(mode, pre, post, regressed),
         "next_strategy": _adapt_strategy(mode, post, regressed),
     }

@@ -149,15 +149,24 @@ def replicator_run(db_path: str | Path, windows: tuple[int, ...] = (120, 180, 24
         })
     replicated = sum(1 for r in replications if r.get("status") == "replicated")
     fragile = sum(1 for r in replications if r.get("status") == "fragile")
-    return {
+    result = {
         "role": "replicator",
         "n_survivors": len(survivors),
         "n_replicated": replicated,
         "n_fragile": fragile,
         "replication_rate": round(replicated / len(survivors), 3) if survivors else None,
         "replications": replications,
+        "windows": list(windows),
         "checked_at": datetime.now().isoformat(timespec="seconds"),
     }
+    # 落盘：与 structure_tests/external_coupling/near_miss_ensemble 一致，供大屏 + 引擎状态读取
+    try:
+        REPORTS.mkdir(parents=True, exist_ok=True)
+        (REPORTS / "replication-latest.json").write_text(
+            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+    return result
 
 
 # ===========================================================================
