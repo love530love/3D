@@ -391,7 +391,13 @@ def _run_evolution_arena(extra_args=None, on_line=None) -> dict:
     if on_line:
         for line in log:
             on_line(line)
-    return {"returncode": 0, "log": log, "produced": ["evolution-arena-latest.json"]}
+    # 自动同步多方法对比报告（标题随最新期号前移），避免大屏标题停在过去期号
+    try:
+        _ensure_fresh_multi_method()
+        log.append("已同步多方法对比报告（标题随最新期号前移）")
+    except Exception:
+        pass
+    return {"returncode": 0, "log": log, "produced": ["evolution-arena-latest.json", "multi-method-latest.json"]}
 
 
 def load_report(name: str):
@@ -600,7 +606,46 @@ def _trim_backtest(data: dict | None) -> dict | None:
     return trimmed
 
 
+def _db_max_period() -> str | None:
+    """Return the newest period present in the authoritative DB (None if empty)."""
+    try:
+        from . import forecasts as fm
+        nums = fm.load_numbers(DB)
+        return nums[-1][0] if nums else None
+    except Exception:
+        return None
+
+
+def _ensure_fresh_multi_method() -> None:
+    """Regenerate reports/multi-method-latest.json when its last_period lags the DB.
+
+    大屏的「最近一期 / 下期预测 / 历史对照」标题派生自此报告。此前该报告只在显式
+    运行 multi_method 时刷新，因此抓取新数据后（或任何跳过了该步骤的实验运行后）
+    标题会停在过去期号，体验很差。现在改为：只要 DB 最新期号前进，渲染大屏前
+    自动重算，标题便始终与数据同步，无需任何手动步骤。
+    """
+    db_max = _db_max_period()
+    if not db_max:
+        return
+    report_path = REPORTS / "multi-method-latest.json"
+    try:
+        if report_path.exists():
+            rep = json.loads(report_path.read_text(encoding="utf-8"))
+            if rep.get("last_period") == db_max:
+                return  # 已是最新，跳过昂贵重算
+    except Exception:
+        pass  # 读取异常则强制重算
+    try:
+        from . import forecasts as fm
+        rep = fm.build_report(DB, last_n=12, top_k=10, alpha=0.1, history_offset=2)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass  # 尽力而为；大屏会显示磁盘上已有的报告
+
+
 def collect_state() -> dict:
+    _ensure_fresh_multi_method()  # 保证多方法对比标题随数据自动前移
     return {
         "generated_at": _now(),
         "project": _project_info(),
