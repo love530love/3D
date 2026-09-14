@@ -181,7 +181,7 @@ function renderKpis(){
   box.innerHTML=items.map(([l,v])=>`<div class="kpi"><div class="label">${l}</div><div class="value">${v??'—'}</div></div>`).join('');
 }
 function renderTabs(){
-  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['arena','模型竞技场'],['debate','双阵营辩论擂台'],['evolution','进化擂台'],['interventions','干预治理'],['external','外部耦合'],['near_miss','近失集成'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
+  const tabs=[['overview','总览'],['functions','功能'],['backtest','回测'],['multi_method','多方法对比'],['history','历史分析'],['arena','模型竞技场'],['debate','双阵营辩论擂台'],['evolution','进化擂台'],['interventions','干预治理'],['external','外部耦合'],['near_miss','近失集成'],['roles','角色与自驱'],['decisions','决策审计'],['timeline','回溯时间轴'],['reports','报告']];
   document.getElementById('tabs').innerHTML=tabs.map(([id,t],i)=>`<button data-tab="${id}" class="${i===0?'active':''}">${t}</button>`).join('');
   document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('active'));
@@ -202,6 +202,7 @@ function showPanel(id){
   else if(id==='interventions')c.innerHTML=interventionsHtml();
   else if(id==='external')c.innerHTML=externalCouplingHtml();
   else if(id==='near_miss')c.innerHTML=nearMissEnsembleHtml();
+  else if(id==='roles')c.innerHTML=rolesHtml();
   else if(id==='decisions')c.innerHTML=decisionsHtml();
   else if(id==='timeline')c.innerHTML=timelineHtml();
   else if(id==='reports')c.innerHTML=reportsHtml();
@@ -812,6 +813,67 @@ function nearMissEnsembleHtml(){
   const fv=r.final_verdict||{};
   h+=`<div class="card" style="margin-bottom:14px"><h3>裁决：${fv.winner_label||'-'}</h3><div class="desc">${fv.fdr_note||''}</div><div class="desc">${fv.conclusion||''}</div></div>`;
   h+=`<div class="note">${r.disclaimer||''}</div>`;
+  return h;
+}
+
+function rolesHtml(){
+  const R=STATE.roles||{roles:[],by_intelligence:{},proposed:[]};
+  const S=STATE.selfdrive||{best_mode:'standard',batches:0,journal_tail:[],strategy_book:{}};
+  const INTEL_LABEL={ai:'人工智能',human:'类人智能',deep:'深度思维'};
+  const INTEL_COLOR={ai:'#4aa3ff',human:'#ffb454',deep:'#9b7bff'};
+  const roles=R.roles||[];
+  let h=`<div class="note">角色注册表是项目"进化能力"的单一真相源（roles.json，纳入版本管理）。任意 AI 接入即读契约驱动，无需特定对话记忆；新角色经裁判团+守门员法定人数审批后生效。</div>`;
+  const bi=R.by_intelligence||{};
+  h+=`<div class="arena-banner">`;
+  h+=`<div class="ab"><div class="l">角色总数</div><div class="v">${roles.length}</div></div>`;
+  ['ai','human','deep'].forEach(k=>{ if(bi[k]) h+=`<div class="ab"><div class="l">${INTEL_LABEL[k]}</div><div class="v" style="color:${INTEL_COLOR[k]}">${bi[k]}</div></div>`; });
+  h+=`<div class="ab"><div class="l">待审批(proposed)</div><div class="v">${(R.proposed||[]).length}</div></div>`;
+  h+=`</div>`;
+  if((R.proposed||[]).length){
+    h+=`<div class="card" style="margin-bottom:14px"><h3>待审批角色（需裁判团+守门员 >=2 签）</h3><div class="desc">${(R.proposed||[]).join('、')}</div></div>`;
+  }
+  h+=`<div class="grid">`;
+  roles.forEach(r=>{
+    const tags=(r.intelligence||[]).map(k=>`<span class="badge iv" style="background:${INTEL_COLOR[k]||'#888'}22;color:${INTEL_COLOR[k]||'#888'};border-color:${INTEL_COLOR[k]||'#888'}">${INTEL_LABEL[k]||k}</span>`).join(' ');
+    const gate=r.required_gate||'none';
+    const gateCls=(gate==='interventions')?'reject':(gate==='none'?'accept':'iv');
+    const st=r.status==='active'?'<span class="badge iv accept">active</span>':'<span class="badge iv warn">'+r.status+'</span>';
+    h+=`<div class="card">
+      <h3>${r.name_cn} <span class="cat">${r.id}</span> ${st}</h3>
+      <div class="desc">${r.description||''}</div>
+      <div style="margin:6px 0">${tags}</div>
+      <div class="cat">kind=${r.kind||'-'} · 隔离=${r.isolation||'-'} · 写闸门=<span class="badge iv ${gateCls}">${gate}</span></div>
+      <div class="cat">能力=${(r.capabilities||[]).join(',')} · 入口=${r.cli_entry||'-'}</div>
+    </div>`;
+  });
+  h+=`</div>`;
+
+  // 自驱动 / 深度思维（selfdrive）
+  h+=`<h3>自驱动引擎 · 深度思维（离线可跑）</h3>`;
+  h+=`<div class="arena-banner">
+    <div class="ab"><div class="l">当前最优策略</div><div class="v">${S.best_mode||'standard'}</div></div>
+    <div class="ab"><div class="l">探索批次数</div><div class="v">${S.batches||0}</div></div>
+  </div>`;
+  const book=S.strategy_book||{};
+  const bookKeys=Object.keys(book);
+  if(bookKeys.length){
+    h+=`<div class="scrolltable"><table class="evo-table"><thead><tr><th>模式</th><th>运行次数</th><th>历史最优 fitness</th><th>最佳批次</th></tr></thead><tbody>`;
+    bookKeys.forEach(m=>{ const rec=book[m]||{}; h+=`<tr><td>${m}</td><td>${rec.runs||0}</td><td>${rec.best_fitness!=null?rec.best_fitness:'-'}</td><td>${rec.best_label||'-'}</td></tr>`; });
+    h+='</tbody></table></div>';
+  }
+  const tail=S.journal_tail||[];
+  if(tail.length){
+    h+=`<h3>深度思考日志（最近 ${(tail.length>3?3:tail.length)} 条）</h3>`;
+    tail.slice(-3).forEach(e=>{
+      const rolled=e.rolled_back?' <span class="badge iv reject">已回滚还原</span>':'';
+      h+=`<div class="card"><h3>${e.label} · mode=${e.mode} ${rolled}</h3>
+        <div class="desc">fitness: ${e.pre_fitness} → ${e.post_fitness} · 下一策略: <b>${e.next_strategy}</b></div>
+        <div class="desc">${e.thought||''}</div></div>`;
+    });
+  } else {
+    h+=`<div class="note">尚未运行自驱动批次。可在「功能」页运行 selfdrive，或直接：<code>python -m workbench.selfdrive run --label batch-001 --mode standard</code></div>`;
+  }
+  h+=`<div class="note">安全网：每批探索前自动 checkpoint 打点；若本批 fitness 相对上批回归则自动 rollback 还原重试，彻底消除"探索失败却无法还原"。</div>`;
   return h;
 }
 

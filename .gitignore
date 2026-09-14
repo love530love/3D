@@ -32,3 +32,6 @@ data.csv
 # Workbench generated artifacts (regenerable / cached)
 workbench/forecasts_cache.sqlite3
 dashboard.html
+
+# 自驱动引擎运行时检查点（可重建，不进版本点）
+snapshots/

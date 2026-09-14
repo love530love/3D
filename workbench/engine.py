@@ -78,6 +78,10 @@ def run_function(func_id: str, extra_args=None, on_line=None) -> dict:
         return _run_debate_arena(extra_args, on_line)
     if func["script"] == "__evolution_arena__":
         return _run_evolution_arena(extra_args, on_line)
+    if func["script"] == "__selfdrive__":
+        return _run_selfdrive(extra_args, on_line)
+    if func["script"] == "__roles__":
+        return _run_roles(extra_args, on_line)
 
     script_path = ROOT / func["script"]
     if not script_path.exists():
@@ -400,6 +404,82 @@ def _run_evolution_arena(extra_args=None, on_line=None) -> dict:
     return {"returncode": 0, "log": log, "produced": ["evolution-arena-latest.json", "multi-method-latest.json"]}
 
 
+def _run_selfdrive(extra_args=None, on_line=None) -> dict:
+    """自驱动进化引擎（离线可跑）：预测+对抗入口 -> 进化 -> 深度反思 -> 回归回滚。"""
+    import argparse
+
+    from . import selfdrive as sd
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--label", type=str, default="batch-auto")
+    ap.add_argument("--mode", type=str, default="standard",
+                    choices=list(sd.MODES.keys()))
+    ap.add_argument("--last-n", type=int, default=200)
+    ap.add_argument("--top-k", type=int, default=10)
+    ap.add_argument("--alpha", type=float, default=0.1)
+    ap.add_argument("--fdr-q", type=float, default=0.05)
+    ap.add_argument("--no-rollback", type=str, default="",
+                    help="非空（如 1）则关闭回归自动回滚；留空=开启")
+    try:
+        a = ap.parse_args(extra_args or [])
+    except SystemExit:
+        return {"returncode": 2, "log": ["参数解析失败（selfdrive）。"], "produced": []}
+
+    # 仪表盘以 '--no-rollback 1' 形式传参；非空即视为关闭回滚
+    allow_rollback = (a.no_rollback == "")
+    log: list[str] = []
+    try:
+        res = sd.run_batch(a.label, a.mode, a.last_n, a.top_k, a.alpha, a.fdr_q,
+                           allow_rollback=allow_rollback)
+    except Exception as exc:  # pragma: no cover - defensive
+        return {"returncode": 1, "log": [f"自驱动批次失败: {exc}"], "produced": []}
+    for line in res.get("log", []):
+        log.append(line)
+        if on_line:
+            on_line(line)
+    entry = res.get("entry", {})
+    log.append(f"深度思考：{entry.get('thought', '')}")
+    log.append(f"下一策略：{entry.get('next_strategy')}")
+    return {"returncode": 0, "log": log,
+            "produced": ["evolution-arena-latest.json", "thinking-journal.jsonl",
+                         "strategy-book.json", "multi-method-latest.json"]}
+
+
+def _run_roles(extra_args=None, on_line=None) -> dict:
+    """列出 / 描述角色注册表（自描述契约），或注册新角色。"""
+    import argparse
+
+    from . import roles as role_registry
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--action", type=str, default="list",
+                    choices=["list", "describe", "register"])
+    ap.add_argument("--id", type=str, default=None)
+    ap.add_argument("--spec", type=str, default=None)
+    ap.add_argument("--approver", action="append", default=[])
+    ap.add_argument("--notes", type=str, default="")
+    try:
+        a = ap.parse_args(extra_args or [])
+    except SystemExit:
+        return {"returncode": 2, "log": ["参数解析失败（roles）。"], "produced": []}
+
+    log: list[str] = []
+    try:
+        if a.action == "describe":
+            out = role_registry.describe(a.id) if a.id else "请指定 --id"
+        elif a.action == "register":
+            out = role_registry.register(a.spec, a.approver, a.notes)
+        else:
+            out = role_registry.list_roles(verbose=True)
+        log.append(json.dumps(out, ensure_ascii=False, indent=2))
+    except Exception as exc:
+        return {"returncode": 1, "log": [f"角色操作失败: {exc}"], "produced": []}
+    if on_line:
+        for line in log:
+            on_line(line)
+    return {"returncode": 0, "log": log, "produced": []}
+
+
 def load_report(name: str):
     path = REPORTS / name
     if not path.exists():
@@ -644,6 +724,51 @@ def _ensure_fresh_multi_method() -> None:
         pass  # 尽力而为；大屏会显示磁盘上已有的报告
 
 
+def _roles_state() -> dict:
+    """读取自描述角色注册表——即"进化能力"的项目内部契约，任意 AI 接入即可发现。
+
+    角色表是单一真相源（roles.json，纳入版本管理）。这里只读取、不改写，
+    让大屏对"谁在驱动进化、各角色智能类型"透明可见。
+    """
+    try:
+        from . import roles as role_registry
+        roles = role_registry.list_roles(verbose=True)
+        by_intel: dict[str, int] = {}
+        for r in roles:
+            for it in (r.get("intelligence") or []):
+                by_intel[it] = by_intel.get(it, 0) + 1
+        proposed = [r["id"] for r in roles if r.get("status") == "proposed"]
+        return {
+            "count": len(roles),
+            "by_intelligence": by_intel,
+            "proposed": proposed,
+            "roles": roles,
+        }
+    except Exception:
+        return {"count": 0, "by_intelligence": {}, "proposed": [], "roles": []}
+
+
+def _selfdrive_state() -> dict:
+    """读取深度思考日志（deep thinking）尾段与策略书，供大屏可见自驱动状态。
+
+    自驱动引擎（selfdrive.py）每批探索后把经验写入反思日志并自适应下一轮策略；
+    这里只读取、不改写，确保离线/在线运行都能被任意 AI 或人类监督者观测。
+    """
+    try:
+        from . import selfdrive
+        journal = selfdrive.load_journal()
+        book = selfdrive._load_strategy_book()
+        best = selfdrive._best_mode()
+        return {
+            "best_mode": best,
+            "strategy_book": book,
+            "journal_tail": journal[-8:],
+            "batches": len(journal),
+        }
+    except Exception:
+        return {"best_mode": "standard", "strategy_book": {}, "journal_tail": [], "batches": 0}
+
+
 def collect_state() -> dict:
     _ensure_fresh_multi_method()  # 保证多方法对比标题随数据自动前移
     return {
@@ -667,6 +792,8 @@ def collect_state() -> dict:
         "interventions": _interventions_state(),
         "external_coupling": load_report("external-coupling-latest.json"),
         "near_miss_ensemble": load_report("near-miss-ensemble-latest.json"),
+        "roles": _roles_state(),
+        "selfdrive": _selfdrive_state(),
     }
 
 

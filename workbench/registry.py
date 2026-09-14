@@ -387,6 +387,40 @@ FUNCTIONS: list[dict] = [
             {"name": "每注成本", "flag": "--cost", "type": "float", "default": 2.0, "help": "每注成本（元）"},
         ],
     },
+    {
+        "id": "selfdrive",
+        "title": "自驱动进化引擎 selfdrive",
+        "script": "__selfdrive__",
+        "args": [],
+        "risk": "L1",
+        "category": "对比",
+        "desc": "离线可跑的自驱动循环：预测模型竞技场 + 双阵营对抗 + 进化引擎 -> 深度反思日志(自适应下一轮策略) -> 探索前自动 checkpoint 打点，若本批 fitness 回归则自动 rollback 还原重试。体现 ai+human+deep 三种智能。",
+        "confirm": False,
+        "params": [
+            {"name": "批次标签 label", "flag": "--label", "type": "text", "default": "batch-auto", "help": "批次标识，用于快照与日志"},
+            {"name": "策略模式 mode", "flag": "--mode", "type": "text", "default": "standard", "help": "standard / aggressive / conservative"},
+            {"name": "回看期数 last_n", "flag": "--last-n", "type": "int", "default": 200, "help": "严格时间顺序窗口期数"},
+            {"name": "候选数 top_k", "flag": "--top-k", "type": "int", "default": 10, "help": "每主张候选个数"},
+            {"name": "FDR 阈值 q", "flag": "--fdr-q", "type": "float", "default": 0.05, "help": "多重比较校正阈值"},
+            {"name": "关闭回归回滚", "flag": "--no-rollback", "type": "text", "default": "", "help": "填 1 关闭自动回滚（留空=开启）"},
+        ],
+    },
+    {
+        "id": "roles",
+        "title": "角色注册表 roles",
+        "script": "__roles__",
+        "args": [],
+        "risk": "L1",
+        "category": "治理",
+        "desc": "自描述角色注册表：list 列出全部角色契约（任意 AI 接入即读）；describe --id X 查看某角色；register --spec 新角色.json 经裁判团+守门员审批后激活。是'进化能力'项目内固化的单一真相源。",
+        "confirm": False,
+        "params": [
+            {"name": "动作 action", "flag": "--action", "type": "text", "default": "list", "help": "list / describe / register"},
+            {"name": "角色 id", "flag": "--id", "type": "text", "default": "", "help": "describe 时填写"},
+            {"name": "spec 路径", "flag": "--spec", "type": "text", "default": "", "help": "register 时填写 new_role.json 路径"},
+            {"name": "审批人", "flag": "--approver", "type": "text", "default": "", "help": "register 时 >=2 个来自 {referee,gatekeeper,human_principal}"},
+        ],
+    },
 ]
 
 
