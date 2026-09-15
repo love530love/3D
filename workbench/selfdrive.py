@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -63,9 +64,10 @@ def fitness_from_state() -> dict:
     oos_survivors = len((evo.get("oos") or {}).get("survivors", []) or [])
 
     # 预测竞技场：最佳方案在 OOS 上的命中率（若有）
+    #    报告字段：结果存于 results[]，OOS 命中率为 exact_rate（非 oos_exact_rate）
     best_hit = 0.0
-    for s in (pred.get("schemes") or []):
-        hr = s.get("oos_exact_rate") or 0.0
+    for s in (pred.get("results") or []):
+        hr = s.get("exact_rate") or 0.0
         if hr and hr > best_hit:
             best_hit = hr
     debate_edges = len((debate.get("edges") or []) if isinstance(debate.get("edges"), list) else [])
@@ -142,23 +144,45 @@ def run_batch(label: str, mode: str = "standard", last_n: int = 200, top_k: int 
     mode = mode if mode in MODES else "standard"
     m = MODES[mode]
     ts = datetime.now().isoformat(timespec="seconds")
+    log: list[str] = []
 
     # 0) 任意 AI 可读取角色契约（自描述）——证明"无需特定对话记忆即可驱动"
     roles = role_registry.list_roles()
     role_ids = [r["id"] for r in roles]
+    log.append(f"[{ts}] batch {label} mode={mode} start; roles discoverable={len(role_ids)}")
 
-    # 1) 安全网：探索前打点
+    # 0.5) 数据进货（ingest）：先抓取最新一期，使后续分析与大屏全部标题自动跟上开奖。
+    #      best-effort：网络不可用/失败则跳过，绝不阻断批次（离线自治仍需可用）。
+    try:
+        _fetch = subprocess.run(
+            [sys.executable, "fetch_sd3d.py", "--db", str(DB)],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        if _fetch.returncode == 0:
+            log.append("ingest: fetched latest draws (fetch_sd3d ok)")
+        else:
+            log.append(f"ingest: SKIP (fetch rc={_fetch.returncode})")
+    except Exception as e:
+        log.append(f"ingest: SKIP ({e})")
+
+    # 1) 安全网：探索前打点（fetch 之后，确保基线基于最新数据）
     pre = fitness_from_state()
     ck = checkpoint.snapshot(f"pre-{label}", notes=f"mode={mode}", fitness=pre["fitness"])
-
-    log: list[str] = [f"[{ts}] batch {label} mode={mode} start; roles discoverable={len(role_ids)}"]
     log.append(f"pre-batch fitness={pre['fitness']} (claims={pre['ledger_claims']}, near_miss={pre['near_miss']})")
 
     # 2) 预测入口（ai）：模型竞技场严格时间前向回测
+    #    注意：run_arena 仅返回报告 dict、不落盘；这里接住返回值并写回
+    #    predictive-arena-latest.json，使大屏/引擎状态反映"本次"回测（否则离线自驱
+    #    后大屏仍显示陈旧回测数据，且 fitness 会误读旧报告的命中率）。
     try:
-        from .predictive_eval import run_arena as _pred
-        _pred(DB, last_n=min(last_n, 200), top_k=top_k, alpha=alpha)
-        log.append("predictive arena: done")
+        from .predictive_eval import run_arena as _pred, write_report
+        pred_report = _pred(DB, last_n=min(last_n, 200), top_k=top_k, alpha=alpha)
+        try:
+            REPORTS.mkdir(parents=True, exist_ok=True)
+            write_report(pred_report, REPORTS / "predictive-arena-latest.json")
+            log.append("predictive arena: done (report persisted)")
+        except Exception as we:
+            log.append(f"predictive arena: write SKIP ({we})")
     except Exception as e:
         log.append(f"predictive arena: SKIP ({e})")
 

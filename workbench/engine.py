@@ -724,6 +724,35 @@ def _ensure_fresh_multi_method() -> None:
         pass  # 尽力而为；大屏会显示磁盘上已有的报告
 
 
+def _ensure_fresh_history_stats() -> None:
+    """Regenerate reports/history-stats-latest.json when its latest period lags the DB.
+
+    与 _ensure_fresh_multi_method 对称：大屏「历史开奖原始表 / 历史预测滚动对照」标题
+    派生自此报告。此前只在显式运行 history_stats 时刷新，抓取新数据后标题会停在过去
+    期号。现在改为：只要 DB 最新期号前进，渲染大屏前自动重算，标题随数据同步。
+    """
+    db_max = _db_max_period()
+    if not db_max:
+        return
+    report_path = REPORTS / "history-stats-latest.json"
+    try:
+        if report_path.exists():
+            rep = json.loads(report_path.read_text(encoding="utf-8"))
+            recs = rep.get("records") or []
+            rep_max = max((r.get("period") for r in recs), default=None) if recs else None
+            if rep_max == db_max:
+                return  # 已是最新，跳过重算
+    except Exception:
+        pass  # 读取异常则强制重算
+    try:
+        from . import history_stats as hs
+        rep = hs.build_report(DB, window=60, pred_window=20, top_k=10, alpha=0.1)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass  # 尽力而为；大屏会显示磁盘上已有的报告
+
+
 def _roles_state() -> dict:
     """读取自描述角色注册表——即"进化能力"的项目内部契约，任意 AI 接入即可发现。
 
@@ -770,7 +799,8 @@ def _selfdrive_state() -> dict:
 
 
 def collect_state() -> dict:
-    _ensure_fresh_multi_method()  # 保证多方法对比标题随数据自动前移
+    _ensure_fresh_multi_method()   # 保证多方法对比标题随数据自动前移
+    _ensure_fresh_history_stats()  # 保证历史开奖/滚动对照标题随数据自动前移
     return {
         "generated_at": _now(),
         "project": _project_info(),
